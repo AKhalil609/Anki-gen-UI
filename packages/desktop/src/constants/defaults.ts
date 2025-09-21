@@ -1,0 +1,17 @@
+export const defaultOpts = {
+  deckName: "My Deck",
+  voice: "de-DE-KatjaNeural",
+  imagesPerNote: 1,
+  concurrency: 2,
+  colFront: "Front (English sentence)",
+  colBack: "Back (German sentence)",
+  sqlMemoryMB: 512,
+  useDownsample: true,
+  imgMaxWidth: 480,
+  imgMaxHeight: 480,
+  imgFormat: "webp",
+  imgQuality: 80,
+  imgStripMeta: true,
+  imgNoEnlarge: true,
+  batchSize: 1000000,
+};
