@@ -1,0 +1,47 @@
+{
+  "name": "anki-one-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "electron/dist/main.js",
+  "scripts": {
+    "dev": "concurrently -k -n VITE,TS,ELEC -c auto \"vite --port 5175\" \"tsc -p electron/tsconfig.json -w\" \"wait-on tcp:5175 && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec 'electron electron/dist/main.js --enable-logging=stderr'\"",
+    "start": "electron electron/dist/main.js",
+    "build": "vite build && tsc -p electron/tsconfig.json"
+  },
+  "dependencies": {
+    "@anki-one/core": "workspace:*",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-progress": "^1.1.7",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.7",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.2.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron": "^31.0.0",
+    "electron-is-dev": "^3.0.1",
+    "lucide-react": "^0.544.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "electronmon": "^2.0.3",
+    "nodemon": "^3.1.10",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.13",
+    "tailwindcss-animate": "^1.0.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "wait-on": "^9.0.0"
+  }
+}

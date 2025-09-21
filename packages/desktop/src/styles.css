@@ -1,0 +1,8 @@
+:root { color-scheme: dark light; font-family: ui-sans-serif, system-ui; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0; }
+.input { width: 100%; padding: 8px 10px; border: 1px solid #8883; border-radius: 10px; }
+.btn { padding: 10px 14px; border-radius: 12px; border: 1px solid #8883; background: #fff1; cursor: pointer; }
+.btn.primary { background: #4f46e5; color: white; border-color: transparent; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.log { width: 100%; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border-radius: 10px; border: 1px solid #8883; }

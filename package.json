@@ -1,0 +1,19 @@
+{
+  "name": "anki-one-monorepo",
+  "private": true,
+  "packageManager": "pnpm@8.6.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter anki-one-desktop dev",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter anki-one-desktop start",
+    "lint": "eslint .",
+    "type-check": "tsc -b packages/core packages/desktop"
+  },
+  "dependencies": {
+    "daisyui": "^5.1.13",
+    "tailwindcss": "^4.1.13"
+  }
+}
