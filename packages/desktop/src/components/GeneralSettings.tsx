@@ -1,3 +1,4 @@
+import "@material/web/textfield/filled-text-field";
 import VoiceSelect from "./VoiceSelect";
 
 type Props = {
@@ -6,83 +7,116 @@ type Props = {
 };
 
 export default function GeneralSettings({ opts, setOpts }: Props) {
-  return (
-    <div className="card bg-base-200 shadow-sm">
-      <div className="card-body grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label className="form-control md:col-span-2">
-          <div className="label"><span className="label-text">Deck Name</span></div>
-          <input
-            className="input input-bordered"
-            value={opts.deckName}
-            onChange={(e) => setOpts({ ...opts, deckName: e.target.value })}
-          />
-        </label>
+  // Web Component input handler helper
+  const setFromEvent = (key: string, numeric = false) =>
+    (e: React.FormEvent<HTMLInputElement>) => {
+      const raw = e.currentTarget.value ?? "";
+      setOpts({ ...opts, [key]: numeric ? Number(raw) || 0 : raw });
+    };
 
-        <label className="form-control">
-          <div className="label"><span className="label-text">Voice</span></div>
+  return (
+    <div
+      style={{
+        padding: 16,
+        borderRadius: 16,
+        background: "var(--md-sys-color-surface)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 16,
+        }}
+      >
+        {/* Deck Name */}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <md-filled-text-field
+            label="Deck Name"
+            value={opts.deckName}
+            onInput={setFromEvent("deckName")}
+            style={{ width: "100%" }}
+          ></md-filled-text-field>
+        </div>
+
+        {/* Voice */}
+        <div>
+          <div style={{ marginBottom: 6, fontSize: 12, opacity: 0.8 }}>Voice</div>
           <VoiceSelect
             value={opts.voice}
             onChange={(voice) => setOpts({ ...opts, voice })}
           />
-        </label>
+        </div>
 
-        <label className="form-control">
-          <div className="label"><span className="label-text">Images / Note</span></div>
-          <input
-            className="input input-bordered"
+        {/* Images / Note */}
+        <div>
+          <md-filled-text-field
+            label="Images / Note"
             type="number"
-            value={opts.imagesPerNote}
-            onChange={(e) => setOpts({ ...opts, imagesPerNote: e.target.value })}
-          />
-        </label>
+            value={String(opts.imagesPerNote ?? "")}
+            onInput={setFromEvent("imagesPerNote", true)}
+            inputmode="numeric"
+            style={{ width: "100%" }}
+          ></md-filled-text-field>
+        </div>
 
-        <label className="form-control">
-          <div className="label"><span className="label-text">Concurrency</span></div>
-          <input
-            className="input input-bordered"
+        {/* Concurrency */}
+        <div>
+          <md-filled-text-field
+            label="Concurrency"
             type="number"
-            value={opts.concurrency}
-            onChange={(e) => setOpts({ ...opts, concurrency: e.target.value })}
-          />
-        </label>
+            value={String(opts.concurrency ?? "")}
+            onInput={setFromEvent("concurrency", true)}
+            inputmode="numeric"
+            style={{ width: "100%" }}
+          ></md-filled-text-field>
+        </div>
 
-        <div className="md:col-span-2">
-          <div className="label"><span className="label-text">CSV Columns</span></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input
-              className="input input-bordered"
+        {/* CSV Columns */}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ marginBottom: 8, fontSize: 12, opacity: 0.8 }}>CSV Columns</div>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr", }}
+          >
+            <md-filled-text-field
+              label="Front column"
               value={opts.colFront}
-              onChange={(e) => setOpts({ ...opts, colFront: e.target.value })}
-              placeholder="Front column"
-            />
-            <input
-              className="input input-bordered"
+              onInput={setFromEvent("colFront")}
+              style={{ width: "100%" }}
+            ></md-filled-text-field>
+
+            <md-filled-text-field
+              label="Back column"
               value={opts.colBack}
-              onChange={(e) => setOpts({ ...opts, colBack: e.target.value })}
-              placeholder="Back column"
-            />
+              onInput={setFromEvent("colBack")}
+              style={{ width: "100%" }}
+            ></md-filled-text-field>
           </div>
         </div>
 
-        <label className="form-control">
-          <div className="label"><span className="label-text">sql.js Memory (MB)</span></div>
-          <input
-            className="input input-bordered"
+        {/* sql.js Memory (MB) */}
+        <div>
+          <md-filled-text-field
+            label="sql.js Memory (MB)"
             type="number"
-            value={opts.sqlMemoryMB}
-            onChange={(e) => setOpts({ ...opts, sqlMemoryMB: e.target.value })}
-          />
-        </label>
+            value={String(opts.sqlMemoryMB ?? "")}
+            onInput={setFromEvent("sqlMemoryMB", true)}
+            inputmode="numeric"
+            style={{ width: "100%" }}
+          ></md-filled-text-field>
+        </div>
 
-        <label className="form-control">
-          <div className="label"><span className="label-text">Batch Size</span></div>
-          <input
-            className="input input-bordered"
+        {/* Batch Size */}
+        <div>
+          <md-filled-text-field
+            label="Batch Size"
             type="number"
-            value={opts.batchSize}
-            onChange={(e) => setOpts({ ...opts, batchSize: e.target.value })}
-          />
-        </label>
+            value={String(opts.batchSize ?? "")}
+            onInput={setFromEvent("batchSize", true)}
+            inputmode="numeric"
+            style={{ width: "100%" }}
+          ></md-filled-text-field>
+        </div>
       </div>
     </div>
   );

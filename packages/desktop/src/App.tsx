@@ -3,6 +3,7 @@ import { defaultOpts } from "./constants/defaults";
 import { useElectronBridge } from "./hooks/useElectronBridge";
 import { pathLike } from "./utils/path";
 import type { ProgressEvent } from "./types";
+import ankiLogo from "./assets/anki_logo.png";
 
 import FilePickers from "./components/FilePickers";
 import GeneralSettings from "./components/GeneralSettings";
@@ -10,6 +11,7 @@ import ImageSettings from "./components/ImageSettings";
 import ActionsPanel from "./components/ActionsPanel";
 import LogPanel from "./components/LogPanel";
 import OutputsPanel from "./components/OutputsPanel";
+import MaterialDemo from "./MaterialDemo";
 
 export default function App() {
   const [csv, setCsv] = useState<string | null>(null);
@@ -27,7 +29,8 @@ export default function App() {
   const [outputs, setOutputs] = useState<string[]>([]);
 
   const onEvent = useCallback((e: ProgressEvent) => {
-    if (e.type === "log") setLog((l) => l + `\n${e.level.toUpperCase()}: ${e.message}`);
+    if (e.type === "log")
+      setLog((l) => l + `\n${e.level.toUpperCase()}: ${e.message}`);
     if (e.type === "progress") setProgress(e);
     if (e.type === "preflight") setLog((l) => l + `\n• ${e.message}`);
     if (e.type === "pack:start")
@@ -47,7 +50,9 @@ export default function App() {
   const handleRun = () => {
     if (!csv || !out) return;
     if (!isElectron || !run) {
-      alert("This action only works in the desktop app. Please run via Electron.");
+      alert(
+        "This action only works in the desktop app. Please run via Electron."
+      );
       return;
     }
     setRunning(true);
@@ -79,23 +84,50 @@ export default function App() {
   return (
     <div className="min-h-screen bg-base-100">
       {/* Top bar */}
-      <div className="navbar bg-base-200 border-b">
-        <div className="container-page w-full">
-          <div className="flex items-center gap-3">
-            <div className="text-xl font-bold">Anki One</div>
-            <div className="opacity-60">CSV → TTS + Images → .apkg</div>
+      <div className="app-navbar">
+        <div className="container-page app-navbar__row">
+          <img
+            src={ankiLogo}
+            alt="Anki One Logo"
+            style={{
+              width: 32,
+              height: 32,
+              objectFit: "contain",
+              cursor: "pointer",
+            }}
+          />
+
+          <div>
+            <div className="app-title">Anki One</div>
+            <div className="app-subtitle">CSV → TTS + Images → .apkg</div>
           </div>
-          <div className="ml-auto" />
+
+          <div>
+            <button
+              className="icon-btn"
+              title="Docs"
+              onClick={() =>
+                window.open(
+                  "https://github.com/AKhalil609/Anki-gen-UI",
+                  "_blank"
+                )
+              }
+            >
+              <span className="material-symbols-rounded">help</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <main className="container-page py-6 space-y-6">
+      <main className="container-page app-main py-6 space-y-6">
+        {/* <MaterialDemo /> */}
         {!isElectron && (
           <div className="alert alert-warning shadow">
             <span>
-              <b>Preview mode:</b> You’re viewing the UI in a normal browser. Building decks
-              requires the desktop app (Electron). Run{" "}
-              <code>pnpm --filter anki-one-desktop dev</code> and use the Electron window.
+              <b>Preview mode:</b> You’re viewing the UI in a normal browser.
+              Building decks requires the desktop app (Electron). Run{" "}
+              <code>pnpm --filter anki-one-desktop dev</code> and use the
+              Electron window.
             </span>
           </div>
         )}

@@ -1,3 +1,6 @@
+import "@material/web/button/filled-button";
+import "@material/web/textfield/filled-text-field";
+
 type Props = {
   isElectron: boolean;
   csv: string | null;
@@ -13,40 +16,56 @@ export default function FilePickers({
   onPickCsv,
   onPickOut,
 }: Props) {
-  return (
-    <div className="card bg-base-200 shadow-sm">
-      <div className="card-body gap-4">
-        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
-          <button
-            onClick={onPickCsv}
-            className="btn btn-primary"
-            disabled={!isElectron}
-            title={!isElectron ? "Desktop-only" : ""}
-          >
-            Choose CSV
-          </button>
-          <div className="flex-1">
-            <div className="input input-bordered w-full truncate">
-              {csv || "No file chosen"}
-            </div>
-          </div>
-        </div>
+  // Only add disabled attribute when really disabled (custom elements need this)
+  const disabledAttr = isElectron ? {} : ({ disabled: true } as const);
 
-        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
-          <button
-            onClick={onPickOut}
-            className="btn"
-            disabled={!isElectron}
-            title={!isElectron ? "Desktop-only" : ""}
-          >
-            Choose Output (.apkg)
-          </button>
-          <div className="flex-1">
-            <div className="input input-bordered w-full truncate">
-              {out || "No output chosen"}
-            </div>
-          </div>
-        </div>
+  return (
+    <div
+      style={{
+        padding: "16px",
+        borderRadius: "16px",
+        background: "var(--md-sys-color-surface)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.08)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "20px",
+      }}
+    >
+      {/* CSV Picker */}
+      <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+        <md-filled-button
+          {...disabledAttr}
+          title={!isElectron ? "Desktop-only" : ""}
+          // React can listen to 'click' on custom elements
+          onClick={onPickCsv as any}
+        >
+          Choose CSV
+        </md-filled-button>
+
+        <md-filled-text-field
+          label="CSV File"
+          value={csv || "No file chosen"}
+          readonly
+          style={{ flex: 1 }}
+        ></md-filled-text-field>
+      </div>
+
+      {/* Output Picker */}
+      <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+        <md-filled-button
+          {...disabledAttr}
+          title={!isElectron ? "Desktop-only" : ""}
+          onClick={onPickOut as any}
+        >
+          Choose Output (.apkg)
+        </md-filled-button>
+
+        <md-filled-text-field
+          label="Output File"
+          value={out || "No output chosen"}
+          readonly
+          style={{ flex: 1 }}
+        ></md-filled-text-field>
       </div>
     </div>
   );

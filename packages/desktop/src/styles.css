@@ -1,7 +1,112 @@
-:root { color-scheme: dark light; font-family: ui-sans-serif, system-ui; }
-* { box-sizing: border-box; }
-body { margin: 0; padding: 0; }
-.input { width: 100%; padding: 8px 10px; border: 1px solid #8883; border-radius: 10px; }
+/* ---------- App theme tokens ---------- */
+:root {
+  /* already set earlier, keep/adjust */
+  --md-sys-color-primary: #6750a4;
+  --md-sys-color-on-primary: #ffffff;
+
+  --md-sys-color-surface: #f7f3ff;
+  --md-sys-color-on-surface: #1d1b20;
+  --md-sys-color-surface-variant: #e7def7;
+  --md-sys-color-outline: #79747e;
+
+  --app-topbar-h: 56px;
+  --md-sys-color-on-surface-variant: #5c5b66;
+  --md-sys-color-outline: #79747e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-sys-color-surface: #141218;
+    --md-sys-color-on-surface: #e6e0e9;
+    --md-sys-color-on-surface-variant: #cac4d0;
+    --md-sys-color-outline: #938f99;
+     --md-sys-color-surface-container: #1d1b20;
+    --md-sys-color-surface-container-highest: #1c1b1f;
+  }
+}
+
+/* ---------- Background ---------- */
+html, body, #root { height: 100%; }
+body {
+  background:
+    radial-gradient(60vw 60vw at -10% -10%, #8b5cf60d 0%, transparent 60%),
+    radial-gradient(50vw 50vw at 110% -10%, #22d3ee0d 0%, transparent 60%),
+    radial-gradient(70vw 70vw at 50% 120%, #f59e0b14 0%, transparent 60%),
+    linear-gradient(180deg, var(--md-sys-color-surface) 0%, var(--md-sys-color-surface) 100%);
+  color: var(--md-sys-color-on-surface);
+}
+
+md-select-option {
+  --md-sys-color-on-surface-variant: var(--md-sys-color-on-surface);
+}
+
+/* ---------- Layout container ---------- */
+.container-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ---------- Top bar ---------- */
+.app-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--app-topbar-h);
+  backdrop-filter: saturate(1.2) blur(8px);
+  background: color-mix(in oklab, var(--md-sys-color-surface) 82%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent);
+  box-shadow:
+    0 0.5px 0 color-mix(in oklab, var(--md-sys-color-outline) 14%, transparent),
+    0 6px 16px #00000010;
+}
+
+.app-navbar__row {
+  height: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.app-subtitle {
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+
+/* Icon buttons using Material Symbols */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  width: 36px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: #f5f5dc;
+}
+.icon-btn:hover {
+  background: color-mix(in oklab, var(--md-sys-color-outline) 12%, transparent);
+}
+.icon-btn:active {
+  background: color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent);
+}
+.icon-btn .material-symbols-rounded { font-size: 20px; }
+
+/* Give main content a little breathing room under the sticky bar */
+main.app-main {
+  padding-top: 8px;
+}
+
+/* ---------- Keep your existing utility classes ---------- */
+.input { width: 100%; padding: 8px 10px; border: 1px solid #8883; border-radius: 10px; color: #474545a6;}
 .btn { padding: 10px 14px; border-radius: 12px; border: 1px solid #8883; background: #fff1; cursor: pointer; }
 .btn.primary { background: #4f46e5; color: white; border-color: transparent; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }

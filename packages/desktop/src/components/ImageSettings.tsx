@@ -1,70 +1,145 @@
+// /packages/desktop/src/components/ImageSettings.tsx
+import "@material/web/select/filled-select";
+import "@material/web/select/select-option";
+import "@material/web/textfield/filled-text-field";
+import "@material/web/switch/switch";
+
 type Props = {
   opts: any;
   setOpts: (o: any) => void;
 };
 
 export default function ImageSettings({ opts, setOpts }: Props) {
+  // Helpers to read values from Material Web fields
+  const setFromEvent = (key: string, numeric = false) =>
+    (e: React.FormEvent<HTMLElement>) => {
+      const target = e.target as HTMLInputElement;
+      const raw = target?.value ?? "";
+      setOpts({ ...opts, [key]: numeric ? Number(raw) || 0 : raw });
+    };
+
+  // For md-switch, only add boolean attribute when true
+  const downsampleAttr = opts.useDownsample ? ({ selected: true } as const) : ({} as const);
+
   return (
-    <div className="collapse collapse-arrow bg-base-200 shadow-sm">
-      <input type="checkbox" />
-      <div className="collapse-title text-md font-medium">Image settings</div>
-      <div className="collapse-content">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label className="form-control">
-            <div className="label"><span className="label-text">Format</span></div>
-            <select
-              className="select select-bordered"
+    <details
+      open
+      style={{
+        borderRadius: 16,
+        overflow: "hidden",
+        background: "var(--md-sys-color-surface)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.1), 0 2px 6px rgba(0,0,0,0.08)",
+      }}
+    >
+      <summary
+        style={{
+          padding: "14px 16px",
+          cursor: "pointer",
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          listStyle: "none",
+          userSelect: "none",
+        }}
+        onClick={(e) => {
+          // prevent focus ring weirdness in some browsers
+          (e.currentTarget as HTMLElement).blur?.();
+        }}
+      >
+        <span>Image settings</span>
+        <span className="material-symbols-rounded" aria-hidden>
+          expand_more
+        </span>
+      </summary>
+
+      <div style={{ padding: 16, borderTop: "1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent)" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 16,
+            gridTemplateColumns: "1fr",
+          }}
+        >
+          {/* Format */}
+          <div>
+            <md-filled-select
+              label="Format"
               value={opts.imgFormat}
-              onChange={(e) => setOpts({ ...opts, imgFormat: e.target.value })}
+              onInput={setFromEvent("imgFormat")}
+              style={{ width: "100%" }}
             >
-              <option>jpeg</option>
-              <option>png</option>
-              <option>webp</option>
-              <option>avif</option>
-            </select>
-          </label>
+              {["jpeg", "png", "webp", "avif"].map((fmt) => (
+                <md-select-option key={fmt} value={fmt}>
+                  <div slot="headline">{fmt.toUpperCase()}</div>
+                </md-select-option>
+              ))}
+            </md-filled-select>
+          </div>
 
-          <label className="form-control">
-            <div className="label"><span className="label-text">Quality</span></div>
-            <input
-              className="input input-bordered"
+          {/* Quality */}
+          <div>
+            <md-filled-text-field
+              label="Quality"
               type="number"
-              value={opts.imgQuality}
-              onChange={(e) => setOpts({ ...opts, imgQuality: e.target.value })}
-            />
-          </label>
+              inputmode="numeric"
+              value={String(opts.imgQuality ?? "")}
+              onInput={setFromEvent("imgQuality", true)}
+              supportingText="0–100 (recommended 80)"
+              style={{ width: "100%" }}
+            ></md-filled-text-field>
+          </div>
 
-          <label className="form-control">
-            <div className="label"><span className="label-text">Max Width</span></div>
-            <input
-              className="input input-bordered"
+          {/* Max Width */}
+          <div>
+            <md-filled-text-field
+              label="Max Width"
               type="number"
-              value={opts.imgMaxWidth}
-              onChange={(e) => setOpts({ ...opts, imgMaxWidth: e.target.value })}
-            />
-          </label>
+              inputmode="numeric"
+              value={String(opts.imgMaxWidth ?? "")}
+              onInput={setFromEvent("imgMaxWidth", true)}
+              style={{ width: "100%" }}
+            ></md-filled-text-field>
+          </div>
 
-          <label className="form-control">
-            <div className="label"><span className="label-text">Max Height</span></div>
-            <input
-              className="input input-bordered"
+          {/* Max Height */}
+          <div>
+            <md-filled-text-field
+              label="Max Height"
               type="number"
-              value={opts.imgMaxHeight}
-              onChange={(e) => setOpts({ ...opts, imgMaxHeight: e.target.value })}
-            />
-          </label>
+              inputmode="numeric"
+              value={String(opts.imgMaxHeight ?? "")}
+              onInput={setFromEvent("imgMaxHeight", true)}
+              style={{ width: "100%" }}
+            ></md-filled-text-field>
+          </div>
 
-          <label className="label cursor-pointer md:col-span-2">
-            <span className="label-text">Downsample images</span>
-            <input
-              type="checkbox"
-              className="toggle"
-              checked={opts.useDownsample}
-              onChange={(e) => setOpts({ ...opts, useDownsample: e.target.checked })}
-            />
-          </label>
+          {/* Downsample toggle */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingTop: 4,
+            }}
+          >
+            <div style={{ display: "grid" }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Downsample images</div>
+              <div style={{ opacity: 0.75, fontSize: 12 }}>
+                Reduce large originals to fit within Max Width/Height
+              </div>
+            </div>
+
+            <md-switch
+              {...downsampleAttr}
+              // md-switch exposes `selected`; we toggle your boolean in state
+              onClick={() =>
+                setOpts({ ...opts, useDownsample: !opts.useDownsample })
+              }
+            ></md-switch>
+          </div>
         </div>
       </div>
-    </div>
+    </details>
   );
 }
