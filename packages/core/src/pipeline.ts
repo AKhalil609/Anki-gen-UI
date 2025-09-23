@@ -2,15 +2,26 @@
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import { execa } from "execa";
 import pLimit from "p-limit";
-import prettyMs from "pretty-ms";
 import { parse } from "csv-parse";
-import { fileURLToPath } from "node:url";
 
 import { ensureDir, buildFilename } from "./util.js";
-import { fetchImagesForSentence } from "./image.js";
 import { resolveAnkiFactory } from "./private/resolve-factory.js";
+import { synthesizeToFile } from "./tts.js";
+import { fetchImagesNode } from "./image-node.js";
+
+function imageQueryFromSentence(s: string): string {
+  // Prefer the first (...) group if present
+  const paren = s.match(/\(([^)]+)\)/);
+  if (paren && paren[1]) {
+    // Clean up: drop articles like der/die/das/den/dem if present at start
+    const w = paren[1].trim();
+    return w.replace(/^(der|die|das|den|dem|des)\s+/i, "").trim();
+  }
+  // Fallback: take the first 2 tokens that look like words (avoid punctuation)
+  const tokens = (s.match(/[A-Za-zÄÖÜäöüß]+/g) || []).slice(0, 2);
+  return tokens.join(" ");
+}
 
 /* ---------------- Public types ---------------- */
 
@@ -20,12 +31,17 @@ export type PipelineOptions = {
   apkgOut: string;
   mediaDir: string;
   imagesDir: string;
+
+  // TTS
   voice: string;
-  rate?: string;
-  pitch?: string;
-  edgeCmd?: string;   // default: edge-tts
-  pythonCmd?: string; // default: python3
+  rate?: string;   // e.g. "+10%"
+  pitch?: string;  // e.g. "+2Hz"
+  volume?: string; // e.g. "+0%"
+
+  // Images (Node only, using g-i-s)
   imagesPerNote: number;
+
+  // Pipeline
   concurrency: number;
   colFront: string;
   colBack: string;
@@ -33,7 +49,7 @@ export type PipelineOptions = {
   dryRun?: boolean;
   sqlMemoryMB: number;
 
-  // Downsample (accepted for parity with CLI/UI; currently we copy as-is)
+  // Downsample (parity placeholders; currently copy as-is)
   useDownsample: boolean;
   imgMaxWidth: number;
   imgMaxHeight: number;
@@ -44,14 +60,18 @@ export type PipelineOptions = {
 
   // Packing
   batchSize: number;
-
-  // Optional override for the python script path (advanced)
-  imageScriptPath?: string;
 };
 
 export type Progress =
   | { type: "preflight"; message: string }
-  | { type: "progress"; queued: number; running: number; done: number; failed: number; retries: number }
+  | {
+      type: "progress";
+      queued: number;
+      running: number;
+      done: number;
+      failed: number;
+      retries: number;
+    }
   | { type: "log"; level: "info" | "warn" | "error"; message: string }
   | { type: "pack:start"; total: number; parts: number; batchSize: number }
   | { type: "pack:part"; partIndex: number; parts: number; filename: string }
@@ -92,24 +112,8 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
   const send = (p: Progress) => onProgress?.(p);
   const started = Date.now();
 
-  const edgeCmd = opts.edgeCmd || "edge-tts";
-  const pythonCmd = opts.pythonCmd || "python3";
-
-  // Preflight: external tools
-  send({ type: "preflight", message: "Checking external tools (edge-tts, Python packages)..." });
-  if (!opts.dryRun) {
-    try {
-      await execa(edgeCmd, ["--help"], { stdio: opts.verbose ? "inherit" : "ignore" });
-    } catch {
-      throw new Error(`edge-tts not found (tried "${edgeCmd}")`);
-    }
-    try {
-      await execa(pythonCmd, ["-c", "import icrawler; import edge_tts"], { stdio: "pipe" });
-    } catch {
-      throw new Error(`Python at "${pythonCmd}" lacks packages: icrawler, edge-tts`);
-    }
-  }
-
+  // Preflight (no external CLIs / Python)
+  send({ type: "preflight", message: "Preparing output folders…" });
   if (!opts.dryRun) {
     await ensureDir(opts.mediaDir);
     await ensureDir(opts.imagesDir);
@@ -127,7 +131,7 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
   send({ type: "preflight", message: "Priming packer (sql.js WASM)…" });
   await resolveAnkiFactory(opts.sqlMemoryMB, !!opts.verbose);
 
-  // Build work
+  // Build work list
   type Work = { index: number; front: string; back: string; mp3Name?: string; imgNames: string[] };
   const works: Work[] = rows.map((r, i) => ({
     index: i + 1,
@@ -151,11 +155,6 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
     retries: ttsRetries,
   });
 
-  // Compute a robust default path to the Python script inside this package
-  // dist/pipeline.js -> ../py/fetch_image.py
-  const defaultPyScript = fileURLToPath(new URL("../py/fetch_image.py", import.meta.url));
-  const pyScriptPath = opts.imageScriptPath || defaultPyScript;
-
   // Execute (TTS + images)
   await Promise.all(
     works.map((w) =>
@@ -170,22 +169,29 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
             return;
           }
 
-          // TTS
+          // ---------- TTS ----------
           const mp3 = buildFilename(w.index, w.back, ".mp3");
           const outPath = path.join(opts.mediaDir, mp3);
           if (!opts.dryRun && !fs.existsSync(outPath)) {
-            const args = ["--voice", opts.voice, "--text", w.back, "--write-media", outPath];
-            if (opts.rate) args.push("--rate", opts.rate);
-            if (opts.pitch) args.push("--pitch", opts.pitch);
             let attempt = 0;
             const maxRetry = 2;
             while (true) {
               attempt++;
               try {
-                await execa(edgeCmd, args, { stdio: opts.verbose ? "inherit" : "ignore" });
+                await synthesizeToFile({
+                  text: w.back,
+                  voice: opts.voice,
+                  rate: opts.rate,
+                  pitch: opts.pitch,
+                  volume: opts.volume,
+                  outFile: outPath,
+                  verbose: !!opts.verbose,
+                });
                 break;
-              } catch {
-                if (attempt > maxRetry) throw new Error(`edge-tts failed after ${maxRetry} retries`);
+              } catch (err) {
+                if (attempt > maxRetry) {
+                  throw new Error(`edge-tts-universal failed after ${maxRetry} retries: ${String(err)}`);
+                }
                 ttsRetries++;
                 send({ type: "progress", ...payload() });
               }
@@ -193,13 +199,11 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
           }
           w.mp3Name = mp3;
 
-          // Images (pick first). We resolve the script relative to the core package,
-          // so packaging/monorepo layouts don't break.
+          // ---------- Images (g-i-s; no Puppeteer, no keys) ----------
+          const query = imageQueryFromSentence(w.back);
           const found = opts.dryRun
             ? []
-            : await fetchImagesForSentence(w.index, w.back, {
-                pyPath: pythonCmd,
-                scriptPath: pyScriptPath,
+            : await fetchImagesNode(w.index, query, {
                 imagesDir: opts.imagesDir,
                 count: opts.imagesPerNote,
                 verbose: !!opts.verbose,
@@ -226,7 +230,12 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
   );
 
   // Pack
-  send({ type: "pack:start", total, parts: Math.ceil(total / opts.batchSize), batchSize: opts.batchSize });
+  send({
+    type: "pack:start",
+    total,
+    parts: Math.ceil(total / opts.batchSize),
+    batchSize: opts.batchSize,
+  });
   const outputs: string[] = [];
   const batches = chunk(works, Math.max(1, opts.batchSize));
   for (let i = 0; i < batches.length; i++) {
@@ -252,7 +261,8 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
     for (const w of part) {
       const pieces: string[] = [w.back];
       if (w.mp3Name) pieces.push(`[sound:${w.mp3Name}]`);
-      if (w.imgNames.length) pieces.push(`<div><img style="max-width:480px; max-height:320px; width:auto; height:auto;" src="${w.imgNames[0]}"></div>`);
+      if (w.imgNames.length)
+        pieces.push(`<div><img style="max-width:480px; max-height:320px; width:auto; height:auto;" src="${w.imgNames[0]}"></div>`);
       deck.addCard(w.front, pieces.join(" "));
     }
 

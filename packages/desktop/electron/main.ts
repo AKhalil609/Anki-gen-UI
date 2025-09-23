@@ -110,7 +110,7 @@ ipcMain.on("run-pipeline", (evt, payload) => {
   try {
     const workerPath = path.join(__dirname, "worker.js");
     console.log("[main] starting worker", workerPath);
-    const worker = new Worker(workerPath, { workerData: payload });
+    const worker = new Worker(workerPath, { workerData: { ...payload }  });
     const channel = evt.sender;
     worker.on("message", (m) => {
       console.log("[worker:event]", m); // <— add this
