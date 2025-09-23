@@ -252,7 +252,7 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
     for (const w of part) {
       const pieces: string[] = [w.back];
       if (w.mp3Name) pieces.push(`[sound:${w.mp3Name}]`);
-      if (w.imgNames.length) pieces.push(`<div><img src="${w.imgNames[0]}"></div>`);
+      if (w.imgNames.length) pieces.push(`<div><img style="max-width:480px; max-height:320px; width:auto; height:auto;" src="${w.imgNames[0]}"></div>`);
       deck.addCard(w.front, pieces.join(" "));
     }
 
