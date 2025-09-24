@@ -23,6 +23,31 @@ function imageQueryFromSentence(s: string): string {
   return tokens.join(" ");
 }
 
+function colorizeParenWord(back: string): string {
+  const m = back.match(/\(([^)]+)\)/); // first (…) group only
+  if (!m) return back;
+
+  const term = m[1].trim();
+  const lower = term.toLowerCase();
+
+  // Default yellow (verbs/others)
+  let color = "#ca8a04"; // yellow-600
+
+  if (/^(der|die|das)\s+/.test(lower)) {
+    if (lower.startsWith("der ")) color = "#1e40af"; // blue-800
+    if (lower.startsWith("die ")) color = "#dc2626"; // red-600
+    if (lower.startsWith("das ")) color = "#16a34a"; // green-600
+  } else if (/^[a-zäöüß]+(en|ern|eln)$/i.test(lower)) {
+    // heuristic for infinitive verbs
+    color = "#ca8a04"; // yellow-600
+  } else {
+    color = "#ca8a04"; // yellow-600
+  }
+
+  const span = `<span style="color:${color}">${term}</span>`;
+  return back.replace(m[0], `(${span})`);
+}
+
 /* ---------------- Public types ---------------- */
 
 export type PipelineOptions = {
@@ -34,8 +59,8 @@ export type PipelineOptions = {
 
   // TTS
   voice: string;
-  rate?: string;   // e.g. "+10%"
-  pitch?: string;  // e.g. "+2Hz"
+  rate?: string; // e.g. "+10%"
+  pitch?: string; // e.g. "+2Hz"
   volume?: string; // e.g. "+0%"
 
   // Images (Node only, using g-i-s)
@@ -83,7 +108,9 @@ async function readCsv(file: string): Promise<Record<string, string>[]> {
   const rows: Record<string, string>[] = [];
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(file)
-      .pipe(parse({ columns: true, skip_empty_lines: true, bom: true, trim: true }))
+      .pipe(
+        parse({ columns: true, skip_empty_lines: true, bom: true, trim: true })
+      )
       .on("data", (r: Record<string, string>) => rows.push(r))
       .on("end", () => resolve())
       .on("error", reject);
@@ -97,7 +124,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function deriveBatchFilename(baseApkg: string, partIdx: number, totalParts: number): string {
+function deriveBatchFilename(
+  baseApkg: string,
+  partIdx: number,
+  totalParts: number
+): string {
   if (totalParts <= 1) return baseApkg;
   const dir = path.dirname(baseApkg);
   const ext = path.extname(baseApkg) || ".apkg";
@@ -108,7 +139,10 @@ function deriveBatchFilename(baseApkg: string, partIdx: number, totalParts: numb
 
 /* ---------------- Main ---------------- */
 
-export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progress) => void) {
+export async function runPipeline(
+  opts: PipelineOptions,
+  onProgress?: (p: Progress) => void
+) {
   const send = (p: Progress) => onProgress?.(p);
   const started = Date.now();
 
@@ -132,7 +166,13 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
   await resolveAnkiFactory(opts.sqlMemoryMB, !!opts.verbose);
 
   // Build work list
-  type Work = { index: number; front: string; back: string; mp3Name?: string; imgNames: string[] };
+  type Work = {
+    index: number;
+    front: string;
+    back: string;
+    mp3Name?: string;
+    imgNames: string[];
+  };
   const works: Work[] = rows.map((r, i) => ({
     index: i + 1,
     front: r[opts.colFront] || "",
@@ -190,7 +230,11 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
                 break;
               } catch (err) {
                 if (attempt > maxRetry) {
-                  throw new Error(`edge-tts-universal failed after ${maxRetry} retries: ${String(err)}`);
+                  throw new Error(
+                    `edge-tts-universal failed after ${maxRetry} retries: ${String(
+                      err
+                    )}`
+                  );
                 }
                 ttsRetries++;
                 send({ type: "progress", ...payload() });
@@ -211,7 +255,11 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
 
           if (!opts.dryRun && found.length > 0) {
             const src = found[0];
-            const outName = buildFilename(w.index, w.back, path.extname(src) || ".jpg");
+            const outName = buildFilename(
+              w.index,
+              w.back,
+              path.extname(src) || ".jpg"
+            );
             const dest = path.join(opts.mediaDir, outName);
             if (!fs.existsSync(dest)) await fsp.copyFile(src, dest);
             w.imgNames.push(outName);
@@ -220,7 +268,11 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
           done++;
         } catch (e: any) {
           failed++;
-          send({ type: "log", level: "warn", message: `Work #${w.index} failed: ${e?.message || e}` });
+          send({
+            type: "log",
+            level: "warn",
+            message: `Work #${w.index} failed: ${e?.message || e}`,
+          });
         } finally {
           running--;
           send({ type: "progress", ...payload() });
@@ -241,10 +293,22 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
   for (let i = 0; i < batches.length; i++) {
     const part = batches[i];
     const outFile = deriveBatchFilename(opts.apkgOut, i, batches.length);
-    send({ type: "pack:part", partIndex: i, parts: batches.length, filename: outFile });
+    send({
+      type: "pack:part",
+      partIndex: i,
+      parts: batches.length,
+      filename: outFile,
+    });
 
-    const apkgFactory = await resolveAnkiFactory(opts.sqlMemoryMB, !!opts.verbose);
-    const deck = apkgFactory(batches.length > 1 ? `${opts.deckName} (Part ${i + 1}/${batches.length})` : opts.deckName);
+    const apkgFactory = await resolveAnkiFactory(
+      opts.sqlMemoryMB,
+      !!opts.verbose
+    );
+    const deck = apkgFactory(
+      batches.length > 1
+        ? `${opts.deckName} (Part ${i + 1}/${batches.length})`
+        : opts.deckName
+    );
 
     // media
     const media = new Set<string>();
@@ -259,10 +323,14 @@ export async function runPipeline(opts: PipelineOptions, onProgress?: (p: Progre
 
     // cards
     for (const w of part) {
-      const pieces: string[] = [w.back];
+      const formattedBack = colorizeParenWord(w.back);
+      const pieces: string[] = [formattedBack];
       if (w.mp3Name) pieces.push(`[sound:${w.mp3Name}]`);
-      if (w.imgNames.length)
-        pieces.push(`<div><img style="max-width:480px; max-height:320px; width:auto; height:auto;" src="${w.imgNames[0]}"></div>`);
+      if (w.imgNames.length) {
+        pieces.push(
+          `<div><img style="max-width:480px; max-height:320px; width:auto; height:auto;" src="${w.imgNames[0]}"></div>`
+        );
+      }
       deck.addCard(w.front, pieces.join(" "));
     }
 
