@@ -7,6 +7,8 @@ import { fileTypeFromBuffer } from "file-type";
 import { ensureDir, buildFilename } from "./util.js";
 import gis from "g-i-s";
 
+// ---------------- Types ----------------
+
 export type ImageFetchOptions = {
   imagesDir: string;
   count: number;
@@ -16,8 +18,15 @@ export type ImageFetchOptions = {
   allowExt?: Array<"jpg" | "jpeg" | "png" | "webp" | "gif">; // default jpg/png/webp
 };
 
+// ---------------- Helpers ----------------
+
 async function fileExists(p: string) {
-  try { await fs.access(p, fsConstants.F_OK); return true; } catch { return false; }
+  try {
+    await fs.access(p, fsConstants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function pickRefererFor(urlStr: string): string | undefined {
@@ -29,7 +38,11 @@ function pickRefererFor(urlStr: string): string | undefined {
   }
 }
 
-async function tryDownload(url: string, outPathNoExt: string, opts: Required<Pick<ImageFetchOptions, "verbose"|"minBytes"|"allowExt">>) {
+async function tryDownload(
+  url: string,
+  outPathNoExt: string,
+  opts: Required<Pick<ImageFetchOptions, "verbose" | "minBytes" | "allowExt">>
+) {
   const referer = pickRefererFor(url);
   const headers: Record<string, string> = {
     "User-Agent":
@@ -41,9 +54,9 @@ async function tryDownload(url: string, outPathNoExt: string, opts: Required<Pic
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort("timeout"), 15000);
 
-  let res;
+  let res: Awaited<ReturnType<typeof fetch>>;
   try {
-    res = await fetch(url, { redirect: "follow", headers, signal: controller.signal });
+    res = await fetch(url, { redirect: "follow", headers, signal: controller.signal as any });
   } finally {
     clearTimeout(t);
   }
@@ -71,8 +84,8 @@ function unique<T>(arr: T[]): T[] {
 /* ---------------- Wikimedia / Wikipedia (no key) ---------------- */
 
 async function wikiLeadImage(query: string, verbose?: boolean): Promise<string[]> {
-  // 1) Try German Wikipedia pageimage original
   const deUrl = `https://de.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=original&titles=${encodeURIComponent(query)}`;
+  if (verbose) console.log(`[image] dewiki query: ${deUrl}`);
   try {
     const r = await fetch(deUrl);
     const j: any = await r.json();
@@ -88,9 +101,8 @@ async function wikiLeadImage(query: string, verbose?: boolean): Promise<string[]
     if (verbose) console.warn(`[image] dewiki pageimage error: ${e?.message || e}`);
   }
 
-  // 2) Search Commons and get direct image URLs via imageinfo
+  // Commons search fallback
   try {
-    // search first
     const searchUrl =
       `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=10&prop=imageinfo&iiprop=url`;
     const r = await fetch(searchUrl);
@@ -116,12 +128,15 @@ async function wikiLeadImage(query: string, verbose?: boolean): Promise<string[]
 
 async function openverseUrls(query: string, limit: number, verbose?: boolean): Promise<string[]> {
   const url = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page_size=${Math.max(1, Math.min(limit, 20))}`;
+  if (verbose) console.log(`[image] openverse query: ${url}`);
   try {
     const r = await fetch(url, { headers: { "User-Agent": "anki-one/1.0 (+https://example.com)" } });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j: any = await r.json();
     const results: any[] = j?.results || [];
-    const urls = results.map(x => x?.url).filter((u: string) => typeof u === "string" && u.startsWith("http"));
+    const urls = results
+      .map(x => x?.url)
+      .filter((u: string) => typeof u === "string" && u.startsWith("http"));
     if (verbose) console.log(`[image] openverse found ${urls.length} urls`);
     return urls.slice(0, limit);
   } catch (e: any) {
@@ -130,10 +145,11 @@ async function openverseUrls(query: string, limit: number, verbose?: boolean): P
   }
 }
 
-/* ---------------- g-i-s (no key) as backup ---------------- */
+/* ---------------- g-i-s (no key) ---------------- */
 
 async function gisUrls(query: string, limit: number, verbose?: boolean): Promise<string[]> {
   try {
+    if (verbose) console.log(`[image] g-i-s query: ${query}`);
     const results: any[] = await new Promise((resolve, reject) => {
       gis(query, (err: any, images: any[]) => (err ? reject(err) : resolve(images || [])));
     });
@@ -148,7 +164,7 @@ async function gisUrls(query: string, limit: number, verbose?: boolean): Promise
   }
 }
 
-/* ---------------- Main fetch ---------------- */
+// ---------------- Main fetch ----------------
 
 export async function fetchImagesNode(
   index: number,
@@ -171,24 +187,26 @@ export async function fetchImagesNode(
 
   let candidates: string[] = [];
 
-  // Provider 1: Wikimedia / Wikipedia
+  if (verbose) console.log(`[image] starting providers for query: "${query}"`);
+
+  // 1) Google Images via g-i-s (no API key)
   try {
-    const wiki = await wikiLeadImage(query, verbose);
-    candidates = unique(candidates.concat(wiki));
+    const g = await gisUrls(query, Math.max(count * 5, 10), verbose);
+    candidates = unique(candidates.concat(g));
   } catch (e: any) {
-    if (verbose) console.warn(`[image] wiki error: ${e?.message || e}`);
+    if (verbose) console.warn(`[image] g-i-s provider failed: ${e?.message || e}`);
   }
 
-  // Provider 2: Openverse
+  // 2) Wikimedia/Wikipedia (no key)
+  if (candidates.length < Math.max(count, 3)) {
+    const wiki = await wikiLeadImage(query, verbose);
+    candidates = unique(candidates.concat(wiki));
+  }
+
+  // 3) Openverse (no key)
   if (candidates.length < Math.max(count, 3)) {
     const ov = await openverseUrls(query, maxPerProvider, verbose);
     candidates = unique(candidates.concat(ov));
-  }
-
-  // Provider 3: g-i-s backup
-  if (candidates.length < Math.max(count, 3)) {
-    const g = await gisUrls(query, maxPerProvider, verbose);
-    candidates = unique(candidates.concat(g));
   }
 
   if (verbose) console.log(`[image] total candidates: ${candidates.length}`);

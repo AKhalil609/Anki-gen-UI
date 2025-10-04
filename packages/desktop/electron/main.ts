@@ -1,22 +1,31 @@
+// packages/desktop/electron/main.ts
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { Worker } from "node:worker_threads";
 
 let win: BrowserWindow | null = null;
 
 function createWindow() {
   // Helpful in dev on some macOS setups (optional):
-  if (!app.isPackaged)
+  if (!app.isPackaged) {
     app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess");
+  }
 
-  const preloadPath = path.join(__dirname, "preload.js"); // __dirname is electron/dist at runtime
-  const indexHtml = path.join(__dirname, "../dist/index.html");
   const isDev = !app.isPackaged;
+  const forceDevtools = process.argv.includes("--devtools");
+
+  // __dirname resolves to ".../electron/dist" at runtime
+  const preloadPath = path.join(__dirname, "preload.js");
+
+  // In production, app.getAppPath() points to app.asar root.
+  // Vite build outputs to "dist" at the app root (included via electron-builder "files").
+  const prodIndexHtml = path.join(app.getAppPath(), "dist", "index.html");
 
   console.log("[main] __dirname:", __dirname);
   console.log("[main] preload:", preloadPath);
-  console.log("[main] indexHtml:", indexHtml);
   console.log("[main] isDev:", isDev);
+  if (!isDev) console.log("[main] prod indexHtml:", prodIndexHtml);
 
   win = new BrowserWindow({
     width: 980,
@@ -54,10 +63,24 @@ function createWindow() {
       .catch((err) => console.error("[main] loadURL error:", err));
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    console.log("[main] loading file URL:", indexHtml);
+    // Sanity check: if index.html isn't present, show an error dialog with the path we tried.
+    if (!fs.existsSync(prodIndexHtml)) {
+      const msg =
+        `Production index.html not found.\n` +
+        `Tried: ${prodIndexHtml}\n\n` +
+        `Ensure "dist/**" is included in electron-builder "files" and Vite build ran.`;
+      console.error("[main] MISSING index.html:", prodIndexHtml);
+      dialog.showErrorBox("Anki One – Missing index.html", msg);
+    }
+
+    console.log("[main] loading file URL:", prodIndexHtml);
     win
-      .loadFile(indexHtml)
+      .loadFile(prodIndexHtml)
       .catch((err) => console.error("[main] loadFile error:", err));
+
+    if (forceDevtools) {
+      win.webContents.openDevTools({ mode: "detach" });
+    }
   }
 }
 
@@ -110,10 +133,10 @@ ipcMain.on("run-pipeline", (evt, payload) => {
   try {
     const workerPath = path.join(__dirname, "worker.js");
     console.log("[main] starting worker", workerPath);
-    const worker = new Worker(workerPath, { workerData: { ...payload }  });
+    const worker = new Worker(workerPath, { workerData: { ...payload } });
     const channel = evt.sender;
     worker.on("message", (m) => {
-      console.log("[worker:event]", m); // <— add this
+      console.log("[worker:event]", m);
       channel.send("pipeline-event", m);
     });
     worker.on("error", (e) => {

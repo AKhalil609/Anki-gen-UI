@@ -1,3 +1,4 @@
+// packages/core/src/image.ts
 import * as path from "node:path";
 import { execa } from "execa";
 import { ensureDir, buildFilename } from "./util.js";
@@ -21,6 +22,9 @@ export type ImageFetchOpts = {
   verbose?: boolean;           // show python logs
 };
 
+/**
+ * Legacy Python (icrawler) path. Kept for compatibility, but your Node path is preferred.
+ */
 export async function fetchImagesForSentence(
   index: number,
   germanSentence: string,
@@ -37,11 +41,10 @@ export async function fetchImagesForSentence(
   const args = [script, germanSentence, String(opts.count), outFolder];
   if (opts.verbose) args.push("--verbose");
 
-  // Keep Python quiet unless verbose; if it fails, surface stderr
   try {
     const { stderr } = await execa(py, args, { stdio: opts.verbose ? "inherit" : "pipe" });
     if (!opts.verbose && stderr && stderr.trim()) {
-      // non-fatal warnings get swallowed; that's fine
+      // Swallow non-fatal warnings
     }
   } catch (e: any) {
     const msg = e?.stderr?.toString?.() || e?.shortMessage || String(e);
@@ -52,7 +55,7 @@ export async function fetchImagesForSentence(
   const candidates = [
     path.join(outFolder, "000001.jpg"),
     path.join(outFolder, "000001.png"),
-    path.join(outFolder, "000001.jpeg")
+    path.join(outFolder, "000001.jpeg"),
   ];
 
   const found: string[] = [];
