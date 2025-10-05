@@ -8,7 +8,16 @@ import { parse } from "csv-parse";
 import { ensureDir, buildFilename } from "./util.js";
 import { resolveAnkiFactory } from "./private/resolve-factory.js";
 import { synthesizeToFile } from "./tts.js";
-import { fetchImagesNode } from "./image-node.js";
+import {
+  fetchImagesNode,
+  type ImageResult as SearchImageResult,
+} from "./image-node.js";
+import {
+  generateImagesPollinations,
+  type ImageResult as GenImageResult,
+} from "./image-gen-pollinations.js";
+
+/* ---------------- Small helpers ---------------- */
 
 function imageQueryFromSentence(s: string): string {
   const paren = s.match(/\(([^)]+)\)/);
@@ -16,7 +25,7 @@ function imageQueryFromSentence(s: string): string {
     const w = paren[1].trim();
     return w.replace(/^(der|die|das|den|dem|des)\s+/i, "").trim();
   }
-  return s.trim(); // full sentence if no parentheses
+  return s.trim();
 }
 
 function colorizeParenWord(back: string): string {
@@ -34,6 +43,53 @@ function colorizeParenWord(back: string): string {
   }
   const span = `<span style="color:${color}">${term}</span>`;
   return back.replace(m[0], `(${span})`);
+}
+
+/* ---------- Generation prompt helpers ---------- */
+
+function extractParenTerm(s: string): string | null {
+  const m = s.match(/\(([^)]+)\)/);
+  return m ? m[1].trim() : null;
+}
+
+/** Remove any ( ... ) fragments, collapse whitespace, and normalize punctuation. */
+function cleanSentence(s: string): string {
+  if (!s) return "";
+  // Replace "(text)" with " text " (drop the parentheses, keep content)
+  let out = s.replace(/\(([^)]+)\)/g, (_m, inner) => ` ${inner} `);
+
+  // Collapse spaces and fix spacing around punctuation
+  out = out
+    .replace(/\s+/g, " ")            // collapse whitespace
+    .replace(/\s+([.,!?;:])/g, "$1") // no space before punctuation
+    .replace(/([(\[])\s+/g, "$1")    // no space after opening bracket
+    .trim();
+
+  // Normalize ellipses and redundant periods
+  out = out.replace(/\.{2,}/g, ".");
+
+  // Ensure terminal punctuation
+  if (!/[.!?]$/.test(out)) out += ".";
+
+  return out;
+}
+
+/**
+ * Build Pollinations prompt:
+ * - Use Front (English) as the scene description, but without any ( ... ) artifacts.
+ * - Use the bracketed term from Back as the main focus if present.
+ * - Strongly discourage any text in the generated image.
+ */
+function buildGenerationPrompt(front: string, back: string, style?: string) {
+  const english = cleanSentence(front);
+  const term = extractParenTerm(front) || "";     // <-- use FRONT
+  const focus = term
+    ? ` Emphasize "${term}" as the main, clearly recognizable subject.`
+    : "";
+  const styleHint = style ? ` Style: ${style}.` : "";
+  const noText =
+    " No text, letters, numbers, captions, watermarks, logos, or typography.";
+  return `${english} The image should represent this sentence faithfully and should not contain any text.${focus}${styleHint}${noText} Simple composition, clean background if needed.`;
 }
 
 /* ---------------- Public types ---------------- */
@@ -63,6 +119,11 @@ export type PipelineOptions = {
   imgStripMeta: boolean;
   imgNoEnlarge: boolean;
   batchSize: number;
+
+  // Generation options
+  imageMode?: "search" | "generate";
+  genProvider?: "pollinations";
+  genStyle?: string;
 };
 
 export type Progress =
@@ -86,7 +147,14 @@ async function readCsv(file: string): Promise<Record<string, string>[]> {
   const rows: Record<string, string>[] = [];
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(file)
-      .pipe(parse({ columns: true, skip_empty_lines: true, bom: true, trim: true }))
+      .pipe(
+        parse({
+          columns: true,
+          skip_empty_lines: true,
+          bom: true,
+          trim: true,
+        })
+      )
       .on("data", (r: Record<string, string>) => rows.push(r))
       .on("end", () => resolve())
       .on("error", reject);
@@ -100,7 +168,11 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-function deriveBatchFilename(baseApkg: string, partIdx: number, totalParts: number): string {
+function deriveBatchFilename(
+  baseApkg: string,
+  partIdx: number,
+  totalParts: number
+): string {
   if (totalParts <= 1) return baseApkg;
   const dir = path.dirname(baseApkg);
   const ext = path.extname(baseApkg) || ".apkg";
@@ -123,6 +195,20 @@ export async function runPipeline(
     await ensureDir(opts.mediaDir);
     await ensureDir(opts.imagesDir);
   }
+
+  // Resolve provider default if missing
+  const resolvedProvider = (opts.genProvider ?? "pollinations") as "pollinations";
+  const resolvedMode = opts.imageMode ?? "search";
+
+  send({
+    type: "log",
+    level: "info",
+    message: `Image mode: ${
+      resolvedMode === "generate"
+        ? `generate/${resolvedProvider}`
+        : "search"
+    }${opts.genStyle ? ` (style: ${opts.genStyle})` : ""}`,
+  });
 
   send({ type: "preflight", message: "Reading CSV…" });
   const rows = await readCsv(opts.input);
@@ -197,7 +283,9 @@ export async function runPipeline(
               } catch (err) {
                 if (attempt > maxRetry) {
                   throw new Error(
-                    `edge-tts-universal failed after ${maxRetry} retries: ${String(err)}`
+                    `edge-tts-universal failed after ${maxRetry} retries: ${String(
+                      err
+                    )}`
                   );
                 }
                 ttsRetries++;
@@ -207,18 +295,70 @@ export async function runPipeline(
           }
           w.mp3Name = mp3;
 
-          // ---------- Images (no-key providers) ----------
-          const query = imageQueryFromSentence(w.back);
-          const found = opts.dryRun
-            ? []
-            : await fetchImagesNode(w.index, query, {
+          // ---------- Images ----------
+          const usingGen =
+            resolvedMode === "generate" && resolvedProvider === "pollinations";
+
+          let found: (SearchImageResult | GenImageResult)[] = [];
+
+          if (!opts.dryRun) {
+            if (usingGen) {
+              const prompt = buildGenerationPrompt(
+                w.front,
+                w.back,
+                opts.genStyle
+              );
+              const styleTag = opts.genStyle ? ` [style=${opts.genStyle}]` : "";
+              send({
+                type: "log",
+                level: "info",
+                message: `[#${w.index}] gen/pollinations prompt${styleTag}: ${prompt}`,
+              });
+              try {
+                found = await generateImagesPollinations(w.index, prompt, {
+                  imagesDir: opts.imagesDir,
+                  count: opts.imagesPerNote,
+                  style: opts.genStyle,
+                  verbose: !!opts.verbose,
+                });
+              } catch (e: any) {
+                send({
+                  type: "log",
+                  level: "warn",
+                  message: `[#${w.index}] generation error: ${
+                    e?.message || e
+                  }`,
+                });
+              }
+            } else if (resolvedMode === "generate") {
+              // Unsupported provider guard (future-proofing)
+              send({
+                type: "log",
+                level: "warn",
+                message: `[#${w.index}] generation skipped: unsupported provider "${resolvedProvider}"`,
+              });
+            }
+
+            // Always try search if nothing was produced by gen (or if not using gen)
+            if (!found.length) {
+              const query = imageQueryFromSentence(w.back);
+              send({
+                type: "log",
+                level: "info",
+                message: `[#${w.index}] search fallback query: "${query}"`,
+              });
+              const searched = await fetchImagesNode(w.index, query, {
                 imagesDir: opts.imagesDir,
                 count: opts.imagesPerNote,
                 verbose: !!opts.verbose,
               });
+              if (searched.length) found = searched;
+            }
+          }
 
           if (!opts.dryRun && found.length > 0) {
-            const src = found[0];
+            const first = found[0];
+            const src = first.path;
             const outName = buildFilename(
               w.index,
               w.back,
@@ -227,6 +367,18 @@ export async function runPipeline(
             const dest = path.join(opts.mediaDir, outName);
             if (!fs.existsSync(dest)) await fsp.copyFile(src, dest);
             w.imgNames.push(outName);
+
+            send({
+              type: "log",
+              level: "info",
+              message: `[#${w.index}] image saved from ${first.source} → ${outName}`,
+            });
+          } else {
+            send({
+              type: "log",
+              level: "warn",
+              message: `[#${w.index}] no image produced`,
+            });
           }
 
           done++;
@@ -263,7 +415,10 @@ export async function runPipeline(
       filename: outFile,
     });
 
-    const apkgFactory = await resolveAnkiFactory(opts.sqlMemoryMB, !!opts.verbose);
+    const apkgFactory = await resolveAnkiFactory(
+      opts.sqlMemoryMB,
+      !!opts.verbose
+    );
     const deck = apkgFactory(
       batches.length > 1
         ? `${opts.deckName} (Part ${i + 1}/${batches.length})`

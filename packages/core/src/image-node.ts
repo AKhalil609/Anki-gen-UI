@@ -7,8 +7,9 @@ import { fileTypeFromBuffer } from "file-type";
 import { ensureDir, buildFilename } from "./util.js";
 import gis from "g-i-s";
 
-// ---------------- Types ----------------
+export type ImageResult = { path: string; source: string };
 
+// ---------------- Types ----------------
 export type ImageFetchOptions = {
   imagesDir: string;
   count: number;
@@ -47,7 +48,7 @@ async function tryDownload(
   const headers: Record<string, string> = {
     "User-Agent":
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
   };
   if (referer) headers["Referer"] = referer;
 
@@ -170,7 +171,7 @@ export async function fetchImagesNode(
   index: number,
   query: string,
   opts: ImageFetchOptions
-): Promise<string[]> {
+): Promise<ImageResult[]> {
   const {
     imagesDir,
     count,
@@ -186,12 +187,14 @@ export async function fetchImagesNode(
   await ensureDir(outFolder);
 
   let candidates: string[] = [];
+  const SOURCES: string[] = [];
 
   if (verbose) console.log(`[image] starting providers for query: "${query}"`);
 
   // 1) Google Images via g-i-s (no API key)
   try {
     const g = await gisUrls(query, Math.max(count * 5, 10), verbose);
+    if (g.length) SOURCES.push("google(g-i-s)");
     candidates = unique(candidates.concat(g));
   } catch (e: any) {
     if (verbose) console.warn(`[image] g-i-s provider failed: ${e?.message || e}`);
@@ -200,12 +203,14 @@ export async function fetchImagesNode(
   // 2) Wikimedia/Wikipedia (no key)
   if (candidates.length < Math.max(count, 3)) {
     const wiki = await wikiLeadImage(query, verbose);
+    if (wiki.length) SOURCES.push("wikipedia/commons");
     candidates = unique(candidates.concat(wiki));
   }
 
   // 3) Openverse (no key)
   if (candidates.length < Math.max(count, 3)) {
     const ov = await openverseUrls(query, maxPerProvider, verbose);
+    if (ov.length) SOURCES.push("openverse");
     candidates = unique(candidates.concat(ov));
   }
 
@@ -228,8 +233,11 @@ export async function fetchImagesNode(
 
   if (verbose) {
     if (saved.length === 0) console.warn(`[image] no images saved for query="${query}"`);
-    else console.log(`[image] saved ${saved.length}/${count} for "${query}"`);
+    else console.log(`[image] saved ${saved.length}/${count} for "${query}" from [${SOURCES.join(", ")}]`);
   }
 
-  return saved;
+  const sourceLabel =
+    SOURCES.length ? `search/${SOURCES.join("+")}` : "search/unknown";
+
+  return saved.map((p) => ({ path: p, source: sourceLabel }));
 }

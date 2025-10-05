@@ -23,6 +23,7 @@ declare global {
       chooseOut(): Promise<string | null>;
       run(opts: any): void;
       onEvent(cb: (e: ProgressEvent) => void): void;
+      openPath?(path: string): Promise<{ ok: boolean; error?: string }>;
     };
   }
 }

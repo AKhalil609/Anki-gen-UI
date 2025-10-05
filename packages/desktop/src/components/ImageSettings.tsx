@@ -9,17 +9,26 @@ type Props = {
   setOpts: (o: any) => void;
 };
 
+const STYLES = [
+  "anime",
+  "comic",
+  "watercolor",
+  "photorealistic",
+  "flat illustration",
+  "3D render",
+];
+
 export default function ImageSettings({ opts, setOpts }: Props) {
-  // Helpers to read values from Material Web fields
+  // IMPORTANT: For Material Web custom elements, prefer currentTarget.value
   const setFromEvent = (key: string, numeric = false) =>
     (e: React.FormEvent<HTMLElement>) => {
-      const target = e.target as HTMLInputElement;
-      const raw = target?.value ?? "";
+      const el = e.currentTarget as unknown as { value?: string };
+      const raw = el?.value ?? "";
       setOpts({ ...opts, [key]: numeric ? Number(raw) || 0 : raw });
     };
 
-  // For md-switch, only add boolean attribute when true
   const downsampleAttr = opts.useDownsample ? ({ selected: true } as const) : ({} as const);
+  const isGenerate = opts.imageMode === "generate";
 
   return (
     <details
@@ -42,31 +51,80 @@ export default function ImageSettings({ opts, setOpts }: Props) {
           listStyle: "none",
           userSelect: "none",
         }}
-        onClick={(e) => {
-          // prevent focus ring weirdness in some browsers
-          (e.currentTarget as HTMLElement).blur?.();
-        }}
+        onClick={(e) => (e.currentTarget as HTMLElement).blur?.()}
       >
         <span>Image settings</span>
-        <span className="material-symbols-rounded" aria-hidden>
-          expand_more
-        </span>
+        <span className="material-symbols-rounded" aria-hidden>expand_more</span>
       </summary>
 
       <div style={{ padding: 16, borderTop: "1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent)" }}>
-        <div
-          style={{
-            display: "grid",
-            gap: 16,
-            gridTemplateColumns: "1fr",
-          }}
-        >
-          {/* Format */}
+        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr" }}>
+          {/* Source mode */}
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>Image Source</div>
+            <md-filled-select
+              label="Image Source"
+              value={opts.imageMode ?? "search"}
+              onInput={setFromEvent("imageMode")}
+              onChange={setFromEvent("imageMode")}
+              style={{ width: "100%" }}
+            >
+              <md-select-option value="search">
+                <div slot="headline">Search (Openverse/Google)</div>
+              </md-select-option>
+              <md-select-option value="generate">
+                <div slot="headline">Generate (Pollinations)</div>
+              </md-select-option>
+            </md-filled-select>
+          </div>
+
+          {/* Provider (fixed for now to Pollinations) */}
+          {isGenerate && (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>Generator</div>
+              <md-filled-select
+                label="Provider"
+                value={opts.genProvider ?? "pollinations"}
+                onInput={setFromEvent("genProvider")}
+                onChange={setFromEvent("genProvider")}
+                style={{ width: "100%" }}
+              >
+                <md-select-option value="pollinations">
+                  <div slot="headline">Pollinations</div>
+                </md-select-option>
+              </md-filled-select>
+            </div>
+          )}
+
+          {/* Style */}
+          {isGenerate && (
+            <div>
+              <md-filled-select
+                label="Style"
+                value={opts.genStyle ?? "anime"}
+                onInput={setFromEvent("genStyle")}
+                onChange={setFromEvent("genStyle")}
+                style={{ width: "100%" }}
+              >
+                {STYLES.map((s) => (
+                  <md-select-option key={s} value={s}>
+                    <div slot="headline">{s}</div>
+                  </md-select-option>
+                ))}
+              </md-filled-select>
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                Uses the English sentence as the prompt and emphasizes the word in (parentheses).
+              </div>
+            </div>
+          )}
+
+          {/* Format / Quality / Size */}
           <div>
             <md-filled-select
               label="Format"
               value={opts.imgFormat}
               onInput={setFromEvent("imgFormat")}
+              onChange={setFromEvent("imgFormat")}
               style={{ width: "100%" }}
             >
               {["jpeg", "png", "webp", "avif"].map((fmt) => (
@@ -77,7 +135,6 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             </md-filled-select>
           </div>
 
-          {/* Quality */}
           <div>
             <md-filled-text-field
               label="Quality"
@@ -85,12 +142,10 @@ export default function ImageSettings({ opts, setOpts }: Props) {
               inputmode="numeric"
               value={String(opts.imgQuality ?? "")}
               onInput={setFromEvent("imgQuality", true)}
-              supportingText="0–100 (recommended 80)"
               style={{ width: "100%" }}
             ></md-filled-text-field>
           </div>
 
-          {/* Max Width */}
           <div>
             <md-filled-text-field
               label="Max Width"
@@ -102,7 +157,6 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             ></md-filled-text-field>
           </div>
 
-          {/* Max Height */}
           <div>
             <md-filled-text-field
               label="Max Height"
@@ -114,7 +168,6 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             ></md-filled-text-field>
           </div>
 
-          {/* Downsample toggle */}
           <div
             style={{
               display: "flex",
@@ -132,10 +185,7 @@ export default function ImageSettings({ opts, setOpts }: Props) {
 
             <md-switch
               {...downsampleAttr}
-              // md-switch exposes `selected`; we toggle your boolean in state
-              onClick={() =>
-                setOpts({ ...opts, useDownsample: !opts.useDownsample })
-              }
+              onClick={() => setOpts({ ...opts, useDownsample: !opts.useDownsample })}
             ></md-switch>
           </div>
         </div>

@@ -11,7 +11,7 @@ import ImageSettings from "./components/ImageSettings";
 import ActionsPanel from "./components/ActionsPanel";
 import LogPanel from "./components/LogPanel";
 import OutputsPanel from "./components/OutputsPanel";
-import MaterialDemo from "./MaterialDemo";
+// import MaterialDemo from "./MaterialDemo";
 
 export default function App() {
   const [csv, setCsv] = useState<string | null>(null);
@@ -44,15 +44,12 @@ export default function App() {
   }, []);
 
   const { isElectron, chooseFile, chooseOut, run } = useElectronBridge(onEvent);
-
   const canRun = useMemo(() => !!csv && !!out && !running, [csv, out, running]);
 
   const handleRun = () => {
     if (!csv || !out) return;
     if (!isElectron || !run) {
-      alert(
-        "This action only works in the desktop app. Please run via Electron."
-      );
+      alert("This action only works in the desktop app. Please run via Electron.");
       return;
     }
     setRunning(true);
@@ -78,6 +75,11 @@ export default function App() {
       imgStripMeta: !!opts.imgStripMeta,
       imgNoEnlarge: !!opts.imgNoEnlarge,
       batchSize: Number(opts.batchSize) || 1000000,
+
+      // NEW:
+      imageMode: opts.imageMode,
+      genProvider: opts.genProvider,
+      genStyle: opts.genStyle,
     });
   };
 
@@ -107,10 +109,7 @@ export default function App() {
               className="icon-btn"
               title="Docs"
               onClick={() =>
-                window.open(
-                  "https://github.com/AKhalil609/Anki-gen-UI",
-                  "_blank"
-                )
+                window.open("https://github.com/AKhalil609/Anki-gen-UI", "_blank")
               }
             >
               <span className="material-symbols-rounded">help</span>
@@ -124,15 +123,12 @@ export default function App() {
         {!isElectron && (
           <div className="alert alert-warning shadow">
             <span>
-              <b>Preview mode:</b> You’re viewing the UI in a normal browser.
-              Building decks requires the desktop app (Electron). Run{" "}
-              <code>pnpm --filter anki-one-desktop dev</code> and use the
-              Electron window.
+              <b>Preview mode:</b> You’re viewing the UI in a normal browser. Building decks requires the desktop app (Electron). Run{" "}
+              <code>pnpm --filter anki-one-desktop dev</code> and use the Electron window.
             </span>
           </div>
         )}
 
-        {/* File pickers */}
         <FilePickers
           isElectron={isElectron}
           csv={csv}
@@ -157,7 +153,6 @@ export default function App() {
             <ImageSettings opts={opts} setOpts={setOpts} />
           </div>
 
-          {/* Actions & log */}
           <div className="space-y-6">
             <ActionsPanel
               isElectron={isElectron}
