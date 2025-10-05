@@ -1,5 +1,5 @@
 // packages/desktop/electron/main.ts
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { Worker } from "node:worker_threads";
@@ -126,6 +126,21 @@ ipcMain.handle("choose-out", async () => {
     filters: [{ name: "Anki Deck", extensions: ["apkg"] }],
   });
   return res.canceled ? null : res.filePath;
+});
+
+ipcMain.handle("open-path", async (_evt, filePath: string) => {
+  try {
+    const result = await shell.openPath(filePath);
+    if (result) {
+      // shell.openPath returns error string on failure
+      console.error("[open-path] error:", result);
+      return { ok: false, error: result };
+    }
+    return { ok: true };
+  } catch (err: any) {
+    console.error("[open-path] exception:", err);
+    return { ok: false, error: err?.message || String(err) };
+  }
 });
 
 // Run the heavy pipeline in a worker so the UI stays responsive

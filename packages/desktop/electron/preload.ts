@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld("anki", {
   onEvent: (cb: (e: any) => void) => {
     ipcRenderer.on("pipeline-event", (_e, data) => cb(data));
   },
+  openPath: (path: string) => ipcRenderer.invoke("open-path", path)
 });

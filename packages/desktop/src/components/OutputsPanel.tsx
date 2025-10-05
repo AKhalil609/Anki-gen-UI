@@ -1,6 +1,6 @@
-// /packages/desktop/src/components/OutputsPanel.tsx
 import "@material/web/icon/icon";
 import "@material/web/iconbutton/icon-button";
+import AnkiIcon from "./icons/AnkiIcon";
 
 type Props = { outputs: string[] };
 
@@ -12,6 +12,15 @@ export default function OutputsPanel({ outputs }: Props) {
       await navigator.clipboard.writeText(text);
     } catch (err) {
       console.error("Failed to copy output:", err);
+    }
+  };
+
+  const handleOpen = async (path: string) => {
+    try {
+      const res = await (window as any).anki.openPath(path);
+      if (!res.ok) console.error("Failed to open path:", res.error);
+    } catch (err) {
+      console.error("Exception while opening path:", err);
     }
   };
 
@@ -56,12 +65,24 @@ export default function OutputsPanel({ outputs }: Props) {
             >
               {o}
             </span>
-            <md-icon-button
-              aria-label="Copy output path"
-              onClick={() => handleCopy(o)}
-            >
-              <md-icon>content_copy</md-icon>
-            </md-icon-button>
+            <div style={{ display: "flex", gap: 4 }}>
+              <md-icon-button
+                aria-label="Copy output path"
+                onClick={() => handleCopy(o)}
+              >
+                <md-icon>
+                  <span className="material-symbols-outlined">content_copy</span>
+                </md-icon>
+              </md-icon-button>
+              <md-icon-button
+                aria-label="Open output path"
+                onClick={() => handleOpen(o)}
+              >
+                <md-icon>
+                  <AnkiIcon />
+                </md-icon>
+              </md-icon-button>
+            </div>
           </li>
         ))}
       </ul>
