@@ -49,7 +49,9 @@ export default function App() {
   const handleRun = () => {
     if (!csv || !out) return;
     if (!isElectron || !run) {
-      alert("This action only works in the desktop app. Please run via Electron.");
+      alert(
+        "This action only works in the desktop app. Please run via Electron."
+      );
       return;
     }
     setRunning(true);
@@ -76,10 +78,11 @@ export default function App() {
       imgNoEnlarge: !!opts.imgNoEnlarge,
       batchSize: Number(opts.batchSize) || 1000000,
 
-      // NEW:
-      imageMode: opts.imageMode,
-      genProvider: opts.genProvider,
-      genStyle: opts.genStyle,
+      // --- NEW ---
+      imageMode: opts.imageMode, // "search" | "generate"
+      genProvider: opts.genProvider, // "pollinations"
+      genStyle: opts.genStyle, // e.g., "anime"
+      useImageCache: !!opts.useImageCache, // reuse local images if present
     });
   };
 
@@ -109,7 +112,10 @@ export default function App() {
               className="icon-btn"
               title="Docs"
               onClick={() =>
-                window.open("https://github.com/AKhalil609/Anki-gen-UI", "_blank")
+                window.open(
+                  "https://github.com/AKhalil609/Anki-gen-UI",
+                  "_blank"
+                )
               }
             >
               <span className="material-symbols-rounded">help</span>
@@ -123,8 +129,10 @@ export default function App() {
         {!isElectron && (
           <div className="alert alert-warning shadow">
             <span>
-              <b>Preview mode:</b> You’re viewing the UI in a normal browser. Building decks requires the desktop app (Electron). Run{" "}
-              <code>pnpm --filter anki-one-desktop dev</code> and use the Electron window.
+              <b>Preview mode:</b> You’re viewing the UI in a normal browser.
+              Building decks requires the desktop app (Electron). Run{" "}
+              <code>pnpm --filter anki-one-desktop dev</code> and use the
+              Electron window.
             </span>
           </div>
         )}

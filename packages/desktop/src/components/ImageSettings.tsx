@@ -9,26 +9,18 @@ type Props = {
   setOpts: (o: any) => void;
 };
 
-const STYLES = [
-  "anime",
-  "comic",
-  "watercolor",
-  "photorealistic",
-  "flat illustration",
-  "3D render",
-];
-
 export default function ImageSettings({ opts, setOpts }: Props) {
-  // IMPORTANT: For Material Web custom elements, prefer currentTarget.value
+  // Helpers to read values from Material Web fields
   const setFromEvent = (key: string, numeric = false) =>
     (e: React.FormEvent<HTMLElement>) => {
-      const el = e.currentTarget as unknown as { value?: string };
-      const raw = el?.value ?? "";
+      const target = e.target as HTMLInputElement;
+      const raw = target?.value ?? "";
       setOpts({ ...opts, [key]: numeric ? Number(raw) || 0 : raw });
     };
 
+  // Switch attributes (Material: boolean presence)
   const downsampleAttr = opts.useDownsample ? ({ selected: true } as const) : ({} as const);
-  const isGenerate = opts.imageMode === "generate";
+  const cacheAttr = opts.useImageCache ? ({ selected: true } as const) : ({} as const);
 
   return (
     <details
@@ -51,80 +43,63 @@ export default function ImageSettings({ opts, setOpts }: Props) {
           listStyle: "none",
           userSelect: "none",
         }}
-        onClick={(e) => (e.currentTarget as HTMLElement).blur?.()}
+        onClick={(e) => {
+          (e.currentTarget as HTMLElement).blur?.();
+        }}
       >
         <span>Image settings</span>
-        <span className="material-symbols-rounded" aria-hidden>expand_more</span>
+        <span className="material-symbols-rounded" aria-hidden>
+          expand_more
+        </span>
       </summary>
 
       <div style={{ padding: 16, borderTop: "1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent)" }}>
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr" }}>
-          {/* Source mode */}
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>Image Source</div>
+        <div
+          style={{
+            display: "grid",
+            gap: 16,
+            gridTemplateColumns: "1fr",
+          }}
+        >
+          {/* Mode (Search vs Generate) */}
+          <div>
             <md-filled-select
-              label="Image Source"
+              label="Image source"
               value={opts.imageMode ?? "search"}
               onInput={setFromEvent("imageMode")}
-              onChange={setFromEvent("imageMode")}
               style={{ width: "100%" }}
             >
-              <md-select-option value="search">
-                <div slot="headline">Search (Openverse/Google)</div>
-              </md-select-option>
-              <md-select-option value="generate">
-                <div slot="headline">Generate (Pollinations)</div>
-              </md-select-option>
+              <md-select-option value="search"><div slot="headline">Search (Google/Openverse/Wiki)</div></md-select-option>
+              <md-select-option value="generate"><div slot="headline">Generate (Pollinations)</div></md-select-option>
             </md-filled-select>
           </div>
 
-          {/* Provider (fixed for now to Pollinations) */}
-          {isGenerate && (
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>Generator</div>
-              <md-filled-select
-                label="Provider"
-                value={opts.genProvider ?? "pollinations"}
-                onInput={setFromEvent("genProvider")}
-                onChange={setFromEvent("genProvider")}
-                style={{ width: "100%" }}
-              >
-                <md-select-option value="pollinations">
-                  <div slot="headline">Pollinations</div>
-                </md-select-option>
-              </md-filled-select>
-            </div>
-          )}
-
-          {/* Style */}
-          {isGenerate && (
+          {/* When Generate is chosen, show style */}
+          {opts.imageMode === "generate" && (
             <div>
               <md-filled-select
-                label="Style"
-                value={opts.genStyle ?? "anime"}
+                label="Generation style"
+                value={opts.genStyle ?? ""}
                 onInput={setFromEvent("genStyle")}
-                onChange={setFromEvent("genStyle")}
                 style={{ width: "100%" }}
               >
-                {STYLES.map((s) => (
-                  <md-select-option key={s} value={s}>
-                    <div slot="headline">{s}</div>
-                  </md-select-option>
-                ))}
+                <md-select-option value=""><div slot="headline">None</div></md-select-option>
+                <md-select-option value="anime"><div slot="headline">Anime</div></md-select-option>
+                <md-select-option value="comic"><div slot="headline">Comic</div></md-select-option>
+                <md-select-option value="illustration"><div slot="headline">Illustration</div></md-select-option>
+                <md-select-option value="photorealistic"><div slot="headline">Photorealistic</div></md-select-option>
+                <md-select-option value="watercolor"><div slot="headline">Watercolor</div></md-select-option>
+                <md-select-option value="3D render"><div slot="headline">3D Render</div></md-select-option>
               </md-filled-select>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-                Uses the English sentence as the prompt and emphasizes the word in (parentheses).
-              </div>
             </div>
           )}
 
-          {/* Format / Quality / Size */}
+          {/* Format */}
           <div>
             <md-filled-select
               label="Format"
               value={opts.imgFormat}
               onInput={setFromEvent("imgFormat")}
-              onChange={setFromEvent("imgFormat")}
               style={{ width: "100%" }}
             >
               {["jpeg", "png", "webp", "avif"].map((fmt) => (
@@ -135,6 +110,7 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             </md-filled-select>
           </div>
 
+          {/* Quality */}
           <div>
             <md-filled-text-field
               label="Quality"
@@ -142,10 +118,12 @@ export default function ImageSettings({ opts, setOpts }: Props) {
               inputmode="numeric"
               value={String(opts.imgQuality ?? "")}
               onInput={setFromEvent("imgQuality", true)}
+              supportingText="0–100 (recommended 80)"
               style={{ width: "100%" }}
             ></md-filled-text-field>
           </div>
 
+          {/* Max Width */}
           <div>
             <md-filled-text-field
               label="Max Width"
@@ -157,6 +135,7 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             ></md-filled-text-field>
           </div>
 
+          {/* Max Height */}
           <div>
             <md-filled-text-field
               label="Max Height"
@@ -168,6 +147,7 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             ></md-filled-text-field>
           </div>
 
+          {/* Downsample toggle */}
           <div
             style={{
               display: "flex",
@@ -185,7 +165,33 @@ export default function ImageSettings({ opts, setOpts }: Props) {
 
             <md-switch
               {...downsampleAttr}
-              onClick={() => setOpts({ ...opts, useDownsample: !opts.useDownsample })}
+              onClick={() =>
+                setOpts({ ...opts, useDownsample: !opts.useDownsample })
+              }
+            ></md-switch>
+          </div>
+
+          {/* --- NEW: Use cached images toggle --- */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingTop: 4,
+            }}
+          >
+            <div style={{ display: "grid" }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Use cached images</div>
+              <div style={{ opacity: 0.75, fontSize: 12 }}>
+                Reuse existing images if available; otherwise fetch or generate new ones.
+              </div>
+            </div>
+
+            <md-switch
+              {...cacheAttr}
+              onClick={() =>
+                setOpts({ ...opts, useImageCache: !opts.useImageCache })
+              }
             ></md-switch>
           </div>
         </div>

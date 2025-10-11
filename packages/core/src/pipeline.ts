@@ -17,7 +17,7 @@ import {
   type ImageResult as GenImageResult,
 } from "./image-gen-pollinations.js";
 
-/* ---------------- Small helpers ---------------- */
+/* ---------------- Helpers ---------------- */
 
 function imageQueryFromSentence(s: string): string {
   const paren = s.match(/\(([^)]+)\)/);
@@ -45,51 +45,73 @@ function colorizeParenWord(back: string): string {
   return back.replace(m[0], `(${span})`);
 }
 
-/* ---------- Generation prompt helpers ---------- */
+/* ---------- Prompt building ---------- */
 
 function extractParenTerm(s: string): string | null {
   const m = s.match(/\(([^)]+)\)/);
   return m ? m[1].trim() : null;
 }
 
-/** Remove any ( ... ) fragments, collapse whitespace, and normalize punctuation. */
+/** Replace "(text)" with " text " (keep the word), then tidy spacing/punctuation. */
 function cleanSentence(s: string): string {
   if (!s) return "";
-  // Replace "(text)" with " text " (drop the parentheses, keep content)
   let out = s.replace(/\(([^)]+)\)/g, (_m, inner) => ` ${inner} `);
-
-  // Collapse spaces and fix spacing around punctuation
   out = out
-    .replace(/\s+/g, " ")            // collapse whitespace
-    .replace(/\s+([.,!?;:])/g, "$1") // no space before punctuation
-    .replace(/([(\[])\s+/g, "$1")    // no space after opening bracket
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,!?;:])/g, "$1")
+    .replace(/([(\[])\s+/g, "$1")
     .trim();
-
-  // Normalize ellipses and redundant periods
   out = out.replace(/\.{2,}/g, ".");
-
-  // Ensure terminal punctuation
   if (!/[.!?]$/.test(out)) out += ".";
-
   return out;
 }
 
-/**
- * Build Pollinations prompt:
- * - Use Front (English) as the scene description, but without any ( ... ) artifacts.
- * - Use the bracketed term from Back as the main focus if present.
- * - Strongly discourage any text in the generated image.
- */
-function buildGenerationPrompt(front: string, back: string, style?: string) {
+/** Build prompt using Front only for term focus, and strong no-text constraint. */
+function buildGenerationPrompt(front: string, _back: string, style?: string) {
   const english = cleanSentence(front);
-  const term = extractParenTerm(front) || "";     // <-- use FRONT
+  const term = extractParenTerm(front) || "";
   const focus = term
     ? ` Emphasize "${term}" as the main, clearly recognizable subject.`
     : "";
   const styleHint = style ? ` Style: ${style}.` : "";
   const noText =
     " No text, letters, numbers, captions, watermarks, logos, or typography.";
-  return `${english} The image should represent this sentence faithfully and should not contain any text.${focus}${styleHint}${noText} Simple composition, clean background if needed.`;
+  return `${english} The image should represent this sentence faithfully.${focus}${styleHint}${noText} Simple composition, clean background if needed.`;
+}
+
+/* ---------- Cache helpers ---------- */
+
+async function listCached(folder: string, count: number): Promise<string[]> {
+  try {
+    const entries = await fsp.readdir(folder, { withFileTypes: true });
+    const files = entries
+      .filter((d) => d.isFile())
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) // "000001" first
+      .slice(0, Math.max(0, count))
+      .map((name) => path.join(folder, name));
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+async function clearDirIfExists(folder: string) {
+  try {
+    await fsp.rm(folder, { recursive: true, force: true });
+  } catch {
+    // ignore
+  }
+}
+
+function genOutFolder(imagesDir: string, index: number, prompt: string) {
+  const slug = buildFilename(index, prompt, ""); // no ext
+  return path.join(imagesDir, slug || "img");
+}
+
+function searchOutFolder(imagesDir: string, index: number, query: string) {
+  const slug = buildFilename(index, query, ""); // no ext
+  return path.join(imagesDir, slug || "img");
 }
 
 /* ---------------- Public types ---------------- */
@@ -120,10 +142,11 @@ export type PipelineOptions = {
   imgNoEnlarge: boolean;
   batchSize: number;
 
-  // Generation options
+  // Generation & cache options
   imageMode?: "search" | "generate";
   genProvider?: "pollinations";
   genStyle?: string;
+  useImageCache?: boolean; // --- NEW ---
 };
 
 export type Progress =
@@ -196,9 +219,10 @@ export async function runPipeline(
     await ensureDir(opts.imagesDir);
   }
 
-  // Resolve provider default if missing
+  // Resolve defaults
   const resolvedProvider = (opts.genProvider ?? "pollinations") as "pollinations";
   const resolvedMode = opts.imageMode ?? "search";
+  const useCache = !!(opts.useImageCache ?? true);
 
   send({
     type: "log",
@@ -207,7 +231,9 @@ export async function runPipeline(
       resolvedMode === "generate"
         ? `generate/${resolvedProvider}`
         : "search"
-    }${opts.genStyle ? ` (style: ${opts.genStyle})` : ""}`,
+    }${opts.genStyle ? ` (style: ${opts.genStyle})` : ""} • cache: ${
+      useCache ? "on" : "off"
+    }`,
   });
 
   send({ type: "preflight", message: "Reading CSV…" });
@@ -302,57 +328,102 @@ export async function runPipeline(
           let found: (SearchImageResult | GenImageResult)[] = [];
 
           if (!opts.dryRun) {
-            if (usingGen) {
-              const prompt = buildGenerationPrompt(
-                w.front,
-                w.back,
-                opts.genStyle
-              );
-              const styleTag = opts.genStyle ? ` [style=${opts.genStyle}]` : "";
+            // Compute folders for cache management
+            const prompt = buildGenerationPrompt(w.front, w.back, opts.genStyle);
+            const genFolder = genOutFolder(opts.imagesDir, w.index, prompt);
+            const searchQuery = imageQueryFromSentence(w.back);
+            const searchFolder = searchOutFolder(
+              opts.imagesDir,
+              w.index,
+              searchQuery
+            );
+
+            if (useCache) {
+              // 1) Try cache for current mode first
+              if (usingGen) {
+                const cached = await listCached(genFolder, opts.imagesPerNote);
+                if (cached.length) {
+                  send({
+                    type: "log",
+                    level: "info",
+                    message: `[#${w.index}] cache hit (generate): ${cached.length} file(s)`,
+                  });
+                  found = cached.map((p) => ({ path: p, source: "cache/pollinations" }));
+                }
+              } else {
+                const cached = await listCached(searchFolder, opts.imagesPerNote);
+                if (cached.length) {
+                  send({
+                    type: "log",
+                    level: "info",
+                    message: `[#${w.index}] cache hit (search): ${cached.length} file(s)`,
+                  });
+                  found = cached.map((p) => ({ path: p, source: "cache/search" }));
+                }
+              }
+            } else {
+              // 2) Bypass cache: clear both potential folders to guarantee fresh images
+              await clearDirIfExists(genFolder);
+              await clearDirIfExists(searchFolder);
               send({
                 type: "log",
                 level: "info",
-                message: `[#${w.index}] gen/pollinations prompt${styleTag}: ${prompt}`,
-              });
-              try {
-                found = await generateImagesPollinations(w.index, prompt, {
-                  imagesDir: opts.imagesDir,
-                  count: opts.imagesPerNote,
-                  style: opts.genStyle,
-                  verbose: !!opts.verbose,
-                });
-              } catch (e: any) {
-                send({
-                  type: "log",
-                  level: "warn",
-                  message: `[#${w.index}] generation error: ${
-                    e?.message || e
-                  }`,
-                });
-              }
-            } else if (resolvedMode === "generate") {
-              // Unsupported provider guard (future-proofing)
-              send({
-                type: "log",
-                level: "warn",
-                message: `[#${w.index}] generation skipped: unsupported provider "${resolvedProvider}"`,
+                message: `[#${w.index}] cache bypass: cleared note image folders`,
               });
             }
 
-            // Always try search if nothing was produced by gen (or if not using gen)
-            if (!found.length) {
-              const query = imageQueryFromSentence(w.back);
-              send({
-                type: "log",
-                level: "info",
-                message: `[#${w.index}] search fallback query: "${query}"`,
-              });
-              const searched = await fetchImagesNode(w.index, query, {
-                imagesDir: opts.imagesDir,
-                count: opts.imagesPerNote,
-                verbose: !!opts.verbose,
-              });
-              if (searched.length) found = searched;
+            // 3) If we still need more images than cached provided, fetch/generate
+            const shortBy =
+              Math.max(0, (opts.imagesPerNote || 1) - (found.length || 0));
+
+            if (shortBy > 0) {
+              if (usingGen) {
+                send({
+                  type: "log",
+                  level: "info",
+                  message: `[#${w.index}] gen/pollinations prompt${
+                    opts.genStyle ? ` [style=${opts.genStyle}]` : ""
+                  }: ${prompt}`,
+                });
+                try {
+                  const generated = await generateImagesPollinations(
+                    w.index,
+                    prompt,
+                    {
+                      imagesDir: opts.imagesDir,
+                      count: shortBy, // only fill the gap
+                      style: opts.genStyle,
+                      verbose: !!opts.verbose,
+                    }
+                  );
+                  if (generated.length) {
+                    found = found.concat(generated);
+                  }
+                } catch (e: any) {
+                  send({
+                    type: "log",
+                    level: "warn",
+                    message: `[#${w.index}] generation error: ${e?.message || e}`,
+                  });
+                }
+              }
+
+              // 4) Fallback to search if still short
+              if (found.length < (opts.imagesPerNote || 1)) {
+                const stillShortBy =
+                  (opts.imagesPerNote || 1) - (found.length || 0);
+                send({
+                  type: "log",
+                  level: "info",
+                  message: `[#${w.index}] search fallback query: "${searchQuery}" (need ${stillShortBy})`,
+                });
+                const searched = await fetchImagesNode(w.index, searchQuery, {
+                  imagesDir: opts.imagesDir,
+                  count: stillShortBy,
+                  verbose: !!opts.verbose,
+                });
+                if (searched.length) found = found.concat(searched);
+              }
             }
           }
 

@@ -14,6 +14,7 @@ export const defaultOpts = {
   imgStripMeta: true,
   imgNoEnlarge: true,
   batchSize: 1000000,
+  useImageCache: true,
   imageMode: "search" as "search" | "generate",
   genProvider: "pollinations" as "pollinations",
   genStyle: "anime",
