@@ -1,4 +1,3 @@
-// packages/desktop/src/App.tsx
 import { useCallback, useMemo, useState } from "react";
 import { defaultOpts } from "./constants/defaults";
 import { useElectronBridge } from "./hooks/useElectronBridge";
@@ -17,7 +16,11 @@ export default function App() {
   const [csv, setCsv] = useState<string | null>(null);
   const [out, setOut] = useState<string | null>(null);
   const [opts, setOpts] = useState<any>(defaultOpts);
+
   const [running, setRunning] = useState(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const [hasError, setHasError] = useState(false);
+
   const [log, setLog] = useState<string>("");
   const [progress, setProgress] = useState<{
     done: number; failed: number; queued: number; running: number; retries: number;
@@ -25,53 +28,123 @@ export default function App() {
   const [outputs, setOutputs] = useState<string[]>([]);
 
   const onEvent = useCallback((e: ProgressEvent) => {
-    if (e.type === "log") setLog((l) => l + `\n${e.level.toUpperCase()}: ${e.message}`);
+    if (e.type === "log") {
+      setLog((l) => l + `\n${e.level.toUpperCase()}: ${e.message}`);
+      if (e.level === "error") setHasError(true);
+    }
     if (e.type === "progress") setProgress(e);
     if (e.type === "preflight") setLog((l) => l + `\n• ${e.message}`);
-    if (e.type === "pack:start") setLog((l) => l + `\nPacking ${e.total} notes into ${e.parts} file(s)…`);
+    if (e.type === "pack:start")
+      setLog((l) => l + `\nPacking ${e.total} notes into ${e.parts} file(s)…`);
     if (e.type === "pack:part") setLog((l) => l + `\n→ ${e.filename}`);
-    if (e.type === "pack:done") { setOutputs(e.outputs); setLog((l) => l + `\nDone in ${(e.durationMs / 1000).toFixed(1)}s`); setRunning(false); }
+    if (e.type === "pack:done") {
+      setOutputs(e.outputs);
+      setLog((l) => l + `\nDone in ${(e.durationMs / 1000).toFixed(1)}s`);
+    }
+    if (e.type === "done") {
+      setRunning(false);
+      setCancelRequested(false);
+    }
   }, []);
 
-  const { isElectron, chooseFile, chooseOut, run } = useElectronBridge(onEvent);
-  const canRun = useMemo(() => !!csv && !!out && !running, [csv, out, running]);
+  const { isElectron, chooseFile, chooseOut, run, cancel } = useElectronBridge(onEvent);
 
-  // open media (already wired)
-  const openMediaDisabled = !isElectron || !out;
-  const handleOpenMedia = useCallback(async () => {
-    if (openMediaDisabled) return;
-    try {
-      const mediaDir = pathLike(out!, "media");
-      const res = await (window as any).anki?.openPath?.(mediaDir);
-      if (!res?.ok) alert("Could not open media folder. It may not exist yet.");
-    } catch {
-      alert("Could not open media folder.");
+  // Enable Build with CSV selected (Output can be requested on click)
+  const canRun = useMemo(() => !!csv && isElectron && !running, [csv, isElectron, running]);
+
+  const disabledReason =
+    !isElectron ? "Desktop-only"
+    : running ? "Running…"
+    : !csv ? "Pick a CSV first"
+    : null;
+
+  const handleRun = async () => {
+    if (!csv) return;
+    if (!isElectron || !run) {
+      alert("This action only works in the desktop app. Please run via Electron.");
+      return;
     }
-  }, [openMediaDisabled, out]);
 
-  const handleRun = () => {
-    if (!csv || !out) return;
-    if (!isElectron || !run) { alert("This action only works in the desktop app. Please run via Electron."); return; }
-    setRunning(true); setLog(""); setOutputs([]);
+    // Prompt for output path if missing
+    let outPath = out;
+    if (!outPath) {
+      try {
+        const chosen = await chooseOut();
+        if (!chosen) return; // user canceled the save dialog
+        outPath = chosen;
+        setOut(chosen);
+      } catch {
+        return;
+      }
+    }
+
+    setRunning(true);
+    setCancelRequested(false);
+    setHasError(false);
+    setLog("");
+    setOutputs([]);
+    setProgress(null);
+
     run({
-      input: csv, apkgOut: out, deckName: opts.deckName,
-      mediaDir: pathLike(out, "media"), imagesDir: pathLike(out, "media/images"),
-      voice: opts.voice, imagesPerNote: Number(opts.imagesPerNote) || 1,
-      concurrency: Number(opts.concurrency) || 2, colFront: opts.colFront, colBack: opts.colBack,
-      ttsFrom: opts.ttsFrom ?? "back", imagesFrom: opts.imagesFrom ?? "back",
-      sqlMemoryMB: Number(opts.sqlMemoryMB) || 512, useDownsample: !!opts.useDownsample,
-      imgMaxWidth: Number(opts.imgMaxWidth) || 480, imgMaxHeight: Number(opts.imgMaxHeight) || 480,
-      imgFormat: opts.imgFormat, imgQuality: Number(opts.imgQuality) || 80,
-      imgStripMeta: !!opts.imgStripMeta, imgNoEnlarge: !!opts.imgNoEnlarge,
+      input: csv,
+      apkgOut: outPath,
+      deckName: opts.deckName,
+      mediaDir: pathLike(outPath, "media"),
+      imagesDir: pathLike(outPath, "media/images"),
+      voice: opts.voice,
+      imagesPerNote: Number(opts.imagesPerNote) || 1,
+      concurrency: Number(opts.concurrency) || 2,
+      colFront: opts.colFront,
+      colBack: opts.colBack,
+      ttsFrom: opts.ttsFrom ?? "back",
+      imagesFrom: opts.imagesFrom ?? "back",
+
+      sqlMemoryMB: Number(opts.sqlMemoryMB) || 512,
+      useDownsample: !!opts.useDownsample,
+      imgMaxWidth: Number(opts.imgMaxWidth) || 480,
+      imgMaxHeight: Number(opts.imgMaxHeight) || 480,
+      imgFormat: opts.imgFormat,
+      imgQuality: Number(opts.imgQuality) || 80,
+      imgStripMeta: !!opts.imgStripMeta,
+      imgNoEnlarge: !!opts.imgNoEnlarge,
       batchSize: Number(opts.batchSize) || 1000000,
-      imageMode: opts.imageMode, genProvider: opts.genProvider, genStyle: opts.genStyle,
+
+      imageMode: opts.imageMode,
+      genProvider: opts.genProvider,
+      genStyle: opts.genStyle,
       useImageCache: !!opts.useImageCache,
     });
   };
 
+  const handleCancel = () => {
+    if (!isElectron) return;
+    setCancelRequested(true);
+    try { cancel?.(); } catch {}
+  };
+
+  const handleReset = () => {
+    setRunning(false);
+    setCancelRequested(false);
+    setHasError(false);
+    setProgress(null);
+    setOutputs([]);
+    // setLog(""); // optional
+  };
+
+  const openMediaDisabled = !isElectron || !out;
+  const handleOpenMedia = useCallback(async () => {
+    if (!openMediaDisabled) {
+      try {
+        const mediaDir = pathLike(out!, "media");
+        const res = await (window as any).anki?.openPath?.(mediaDir);
+        if (!res?.ok) alert("Could not open media folder. It may not exist yet.");
+      } catch { alert("Could not open media folder."); }
+    }
+  }, [openMediaDisabled, out]);
+
   return (
     <div className="min-h-screen bg-base-100">
-      {/* Top Bar */}
+      {/* Top bar */}
       <div className="app-navbar">
         <div className="container-page app-navbar__row">
           <img src={ankiLogo} alt="Anki One Logo" style={{ width: 32, height: 32, objectFit: "contain" }} />
@@ -84,7 +157,7 @@ export default function App() {
               className="icon-btn"
               title={openMediaDisabled ? "Pick an output path in the Electron app first" : "Open media folder"}
               aria-disabled={openMediaDisabled}
-              onClick={() => !openMediaDisabled && handleOpenMedia()}
+              onClick={handleOpenMedia}
             >
               <span className="material-symbols-rounded">folder_open</span>
             </button>
@@ -108,9 +181,7 @@ export default function App() {
         )}
 
         <div className="grid-page">
-          {/* LEFT: Steps 1 & 2 */}
           <div className="space-y-6">
-            {/* STEP 1 */}
             <section className="section-card">
               <div className="section-header">
                 <div className="badge">1</div>
@@ -128,7 +199,6 @@ export default function App() {
               />
             </section>
 
-            {/* STEP 2 */}
             <section className="section-card">
               <div className="section-header">
                 <div className="badge">2</div>
@@ -137,8 +207,6 @@ export default function App() {
                   <div className="section-desc">Voice, columns, and image settings.</div>
                 </div>
               </div>
-
-              {/* two-column on desktop */}
               <div className="form-grid two-col">
                 <div className="space-y-6">
                   <GeneralSettings opts={opts} setOpts={setOpts} />
@@ -150,14 +218,13 @@ export default function App() {
             </section>
           </div>
 
-          {/* RIGHT: Sticky actions/progress/results */}
           <div className="space-y-6 sticky-col">
             <section className="section-card">
               <div className="section-header">
                 <div className="badge">3</div>
                 <div>
                   <div className="section-title">Build & Progress</div>
-                  <div className="section-desc">Kick off the run and watch it progress.</div>
+                  <div className="section-desc">Kick off the run and control it.</div>
                 </div>
               </div>
               <ActionsPanel
@@ -165,7 +232,12 @@ export default function App() {
                 canRun={canRun}
                 running={running}
                 progress={progress as any}
+                hasError={hasError}
+                cancelRequested={cancelRequested}
                 onRun={handleRun}
+                onCancel={handleCancel}
+                onReset={handleReset}
+                disabledReason={disabledReason}
               />
             </section>
 

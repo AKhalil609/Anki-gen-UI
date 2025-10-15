@@ -5,9 +5,93 @@ import * as fs from "node:fs";
 import { Worker } from "node:worker_threads";
 
 let win: BrowserWindow | null = null;
+let currentWorker: Worker | null = null;
+
+/** Safely send an event to the renderer */
+function send(evt: any) {
+  try {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("pipeline-event", evt);
+    }
+  } catch (err) {
+    console.error("[main] send failed:", err);
+  }
+}
+
+/** Terminate any in-flight worker (used for cancel or before re-run) */
+async function terminateCurrentWorker(reason: "cancel" | "replace") {
+  if (!currentWorker) return;
+  try {
+    await currentWorker.terminate();
+    send({
+      type: "log",
+      level: "warn",
+      message: reason === "cancel" ? "Cancelled by user." : "Previous run stopped.",
+    });
+    send({ type: "done", code: reason === "cancel" ? 2 : 3 });
+  } catch (e: any) {
+    console.error("[main] terminate error:", e);
+    send({ type: "log", level: "error", message: String(e?.message || e) });
+    send({ type: "done", code: 1 });
+  } finally {
+    currentWorker = null;
+  }
+}
+
+/** Minimal, safe header-only CSV parsing (first line), with quotes + BOM support */
+function readCsvHeader(csvPath: string): string[] {
+  const MAX_BYTES = 256 * 1024; // plenty for a single long header line
+  const fd = fs.openSync(csvPath, "r");
+  try {
+    const buf = Buffer.allocUnsafe(MAX_BYTES);
+    const bytesRead = fs.readSync(fd, buf, 0, MAX_BYTES, 0);
+    let chunk = buf.slice(0, bytesRead).toString("utf8");
+    // Normalize newlines and strip BOM if present
+    if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
+    chunk = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const firstLine = chunk.split("\n")[0] ?? "";
+
+    // Parse CSV cells for that line (handles "quotes, with, commas")
+    const cells: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < firstLine.length; i++) {
+      const ch = firstLine[i];
+      if (ch === '"') {
+        if (inQuotes && firstLine[i + 1] === '"') {
+          // escaped quote
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === "," && !inQuotes) {
+        cells.push(cur.trim());
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur.trim());
+    return cells;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** Preflight: verify CSV has the requested column headers */
+function csvHasColumns(csvPath: string, required: string[]): { ok: boolean; missing: string[]; header?: string[] } {
+  try {
+    const header = readCsvHeader(csvPath).map((h) => String(h).trim());
+    const missing = required.filter((r) => !header.includes(r));
+    return { ok: missing.length === 0, missing, header };
+  } catch (err: any) {
+    return { ok: false, missing: [`Failed to read CSV: ${err?.message || err}`] };
+  }
+}
 
 function createWindow() {
-  // Helpful in dev on some macOS setups (optional):
   if (!app.isPackaged) {
     app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess");
   }
@@ -15,22 +99,13 @@ function createWindow() {
   const isDev = !app.isPackaged;
   const forceDevtools = process.argv.includes("--devtools");
 
-  // __dirname resolves to ".../electron/dist" at runtime
   const preloadPath = path.join(__dirname, "preload.js");
-
-  // In production, app.getAppPath() points to app.asar root.
-  // Vite build outputs to "dist" at the app root (included via electron-builder "files").
   const prodIndexHtml = path.join(app.getAppPath(), "dist", "index.html");
-
-  console.log("[main] __dirname:", __dirname);
-  console.log("[main] preload:", preloadPath);
-  console.log("[main] isDev:", isDev);
-  if (!isDev) console.log("[main] prod indexHtml:", prodIndexHtml);
 
   win = new BrowserWindow({
     width: 980,
     height: 720,
-    show: false, // show after ready-to-show
+    show: false,
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
@@ -38,7 +113,6 @@ function createWindow() {
     },
   });
 
-  // Robust logging
   win.webContents.on("did-fail-load", (_e, code, desc, url) => {
     console.error("[main] did-fail-load", { code, desc, url });
   });
@@ -47,23 +121,17 @@ function createWindow() {
   });
   win.on("unresponsive", () => console.error("[main] window unresponsive"));
   win.on("ready-to-show", () => {
-    console.log("[main] ready-to-show");
     if (win && !win.isDestroyed()) win.show();
   });
   win.on("closed", () => {
-    console.log("[main] window closed");
     win = null;
   });
 
   if (isDev) {
     const url = "http://localhost:5175";
-    console.log("[main] loading dev URL:", url);
-    win
-      .loadURL(url)
-      .catch((err) => console.error("[main] loadURL error:", err));
+    win.loadURL(url).catch((err) => console.error("[main] loadURL error:", err));
     win.webContents.openDevTools({ mode: "detach" });
   } else {
-    // Sanity check: if index.html isn't present, show an error dialog with the path we tried.
     if (!fs.existsSync(prodIndexHtml)) {
       const msg =
         `Production index.html not found.\n` +
@@ -73,18 +141,12 @@ function createWindow() {
       dialog.showErrorBox("Anki One – Missing index.html", msg);
     }
 
-    console.log("[main] loading file URL:", prodIndexHtml);
-    win
-      .loadFile(prodIndexHtml)
-      .catch((err) => console.error("[main] loadFile error:", err));
-
-    if (forceDevtools) {
-      win.webContents.openDevTools({ mode: "detach" });
-    }
+    win.loadFile(prodIndexHtml).catch((err) => console.error("[main] loadFile error:", err));
+    if (forceDevtools) win.webContents.openDevTools({ mode: "detach" });
   }
 }
 
-// Single instance lock (mac-friendly)
+// Single instance lock
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -98,7 +160,6 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     createWindow();
-
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
       else if (win) win.show();
@@ -132,7 +193,6 @@ ipcMain.handle("open-path", async (_evt, filePath: string) => {
   try {
     const result = await shell.openPath(filePath);
     if (result) {
-      // shell.openPath returns error string on failure
       console.error("[open-path] error:", result);
       return { ok: false, error: result };
     }
@@ -143,28 +203,63 @@ ipcMain.handle("open-path", async (_evt, filePath: string) => {
   }
 });
 
-// Run the heavy pipeline in a worker so the UI stays responsive
-ipcMain.on("run-pipeline", (evt, payload) => {
+ipcMain.on("cancel-pipeline", async () => {
+  await terminateCurrentWorker("cancel");
+});
+
+/** Run the heavy pipeline in a worker so the UI stays responsive */
+ipcMain.on("run-pipeline", async (evt, payload) => {
   try {
+    if (currentWorker) {
+      await terminateCurrentWorker("replace");
+    }
+
+    const { input, colFront, colBack } = payload || {};
+    if (!input || !fs.existsSync(input)) {
+      send({ type: "log", level: "error", message: "CSV path is missing or not found." });
+      send({ type: "done", code: 1 });
+      return;
+    }
+
+    // Preflight header check (no third-party dependency)
+    const reqCols = [String(colFront || ""), String(colBack || "")].filter(Boolean);
+    if (reqCols.length === 2) {
+      const { ok, missing, header } = csvHasColumns(input, reqCols);
+      if (!ok) {
+        send({
+          type: "log",
+          level: "error",
+          message: `CSV is missing required column(s): ${missing.join(", ")}`
+            + (header ? `\nDetected header: [${header.join(", ")}]` : ""),
+        });
+        send({ type: "done", code: 1 });
+        return;
+      }
+    }
+
     const workerPath = path.join(__dirname, "worker.js");
-    console.log("[main] starting worker", workerPath);
-    const worker = new Worker(workerPath, { workerData: { ...payload } });
+    currentWorker = new Worker(workerPath, { workerData: { ...payload } });
+
     const channel = evt.sender;
-    worker.on("message", (m) => {
-      console.log("[worker:event]", m);
+
+    currentWorker.on("message", (m) => {
       channel.send("pipeline-event", m);
     });
-    worker.on("error", (e) => {
+
+    currentWorker.on("error", (e) => {
       console.error("[worker] error:", e);
       channel.send("pipeline-event", {
         type: "log",
         level: "error",
         message: e?.message || String(e),
       });
+      channel.send("pipeline-event", { type: "done", code: 1 });
+      currentWorker = null;
     });
-    worker.on("exit", (code) => {
-      console.log("[worker] exit code:", code);
+
+    currentWorker.on("exit", (code) => {
       channel.send("pipeline-event", { type: "done", code });
+      currentWorker = null;
     });
   } catch (e: any) {
     console.error("[main] failed to start worker:", e);
@@ -173,5 +268,7 @@ ipcMain.on("run-pipeline", (evt, payload) => {
       level: "error",
       message: e?.message || String(e),
     });
+    evt.sender.send("pipeline-event", { type: "done", code: 1 });
+    currentWorker = null;
   }
 });

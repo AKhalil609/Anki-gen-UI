@@ -11,10 +11,8 @@ export function useElectronBridge(onEvent?: (e: ProgressEvent) => void) {
 
   const chooseFile = async () => (isElectron ? window.anki!.chooseFile() : null);
   const chooseOut = async () => (isElectron ? window.anki!.chooseOut() : null);
-  const run = (opts: any) => {
-    if (!isElectron) return;
-    window.anki!.run(opts);
-  };
+  const run = (opts: any) => { if (isElectron) window.anki!.run(opts); };
+  const cancel = () => { if (isElectron && window.anki?.cancel) window.anki.cancel(); };
 
-  return { isElectron, chooseFile, chooseOut, run };
+  return { isElectron, chooseFile, chooseOut, run, cancel };
 }

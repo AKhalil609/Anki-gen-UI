@@ -118,7 +118,6 @@ main.app-main { padding-top: 12px; }
 }
 @media (min-width: 980px) {
   .grid-page {
-    grid-template-columns: 1.8fr .9fr; /* wider form, narrower tools */
     align-items: start;
   }
   .sticky-col {
@@ -274,3 +273,145 @@ md-menu [role="option"],
 md-menu [role="option"] * {
   color: var(--input-fg) !important;
 }
+
+/* ===========================
+   POLISH & PERSONALITY (animations + transitions)
+   =========================== */
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Shared easing & transitions ---------- */
+:root {
+  --elev-in: cubic-bezier(.2,.8,.2,1);
+  --elev-out: cubic-bezier(.4,0,.2,1);
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 35%, transparent);
+}
+
+/* Smoothen common elements */
+.section-card,
+.icon-btn,
+md-filled-text-field,
+md-filled-select,
+md-icon-button,
+.alert,
+.btn {
+  transition:
+    box-shadow .25s var(--elev-in),
+    transform .25s var(--elev-in),
+    border-color .2s var(--elev-out),
+    background-color .2s var(--elev-out),
+    color .2s var(--elev-out),
+    opacity .2s var(--elev-out);
+}
+
+/* ---------- Entrance animations (subtle) ---------- */
+@keyframes cardPopIn {
+  from { opacity: 0; transform: translateY(6px) scale(.995); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.section-card {
+  animation: cardPopIn .35s var(--elev-in) both;
+}
+.section-card:nth-of-type(1) { animation-delay: .02s; }
+.section-card:nth-of-type(2) { animation-delay: .04s; }
+.section-card:nth-of-type(3) { animation-delay: .06s; }
+
+/* ---------- Card hover elevation ---------- */
+.section-card:hover {
+  box-shadow:
+    0 2px 6px rgba(0,0,0,.08),
+    0 10px 28px rgba(0,0,0,.10);
+}
+
+/* ---------- Icon buttons: micro-interactions ---------- */
+.icon-btn:hover { transform: translateY(-1px); }
+.icon-btn:active { transform: translateY(0); }
+.icon-btn .material-symbols-rounded {
+  transition: transform .25s var(--elev-in), opacity .2s var(--elev-out);
+}
+.icon-btn:hover .material-symbols-rounded { transform: scale(1.06); }
+
+/* ---------- Focus rings (keyboard friendly) ---------- */
+:where(.icon-btn, .btn, md-filled-text-field, md-filled-select, md-icon-button):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), 0 1px 2px rgba(0,0,0,.08), 0 6px 20px rgba(0,0,0,.08);
+}
+
+/* ---------- Inputs: lift on hover, settle on focus ---------- */
+md-filled-text-field:hover,
+md-filled-select:hover {
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  transform: translateY(-0.5px);
+}
+md-filled-text-field:focus-within,
+md-filled-select:focus-within {
+  transform: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ---------- Sticky column: fade-in on stick (subtle) ---------- */
+.sticky-col {
+  animation: cardPopIn .35s var(--elev-in) both;
+}
+
+/* ---------- Progress: gentle pulse at start ---------- */
+@keyframes softPulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--md-sys-color-primary) 26%, transparent); }
+  70%  { box-shadow: 0 0 0 6px color-mix(in oklab, var(--md-sys-color-primary) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--md-sys-color-primary) 0%, transparent); }
+}
+.section-card:has(md-linear-progress[indeterminate]),
+.section-card:has(md-linear-progress[value]) {
+  animation: softPulse 1.2s ease-out 1;
+}
+
+/* ---------- Outputs panel: glow on new paths ---------- */
+@keyframes listGlow {
+  from { background: color-mix(in oklab, var(--md-sys-color-primary) 12%, transparent); }
+  to   { background: transparent; }
+}
+.section-card:has(ul > li) ul > li {
+  border-radius: 10px;
+}
+.section-card:has(ul > li) ul > li:first-child {
+  animation: listGlow 900ms var(--elev-out) 1;
+}
+
+/* ---------- Alerts: slide-in ---------- */
+@keyframes slideIn {
+  from { transform: translateY(-4px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.alert { animation: slideIn .3s var(--elev-in) both; }
+
+/* ---------- Navbar: tiny shadow grow on scroll (no JS needed) ---------- */
+/* Trick: as soon as content overflows, make it a bit more pronounced */
+.app-navbar {
+  transition: box-shadow .25s var(--elev-in), background-color .25s var(--elev-out);
+}
+@media (min-height: 500px) {
+  main.app-main { scroll-margin-top: calc(var(--app-topbar-h) + 8px); }
+}
+
+/* ---------- Section headers: icon wiggle on hover ---------- */
+.section-header .badge {
+  transition: transform .2s var(--elev-in), background-color .2s var(--elev-out);
+}
+.section-card:hover .section-header .badge {
+  transform: translateY(-1px);
+  background: color-mix(in oklab, var(--md-sys-color-primary) 30%, var(--surface-elev-1));
+}
+
+/* ---------- Buttons: playful lift & press ---------- */
+.btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.btn:active { transform: translateY(0); box-shadow: none; }
+
+/* ---------- Minor: smoother anchor behavior ---------- */
+html { scroll-behavior: smooth; }

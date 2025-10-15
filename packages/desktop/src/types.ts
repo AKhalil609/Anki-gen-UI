@@ -14,8 +14,6 @@ export type ProgressEvent =
   | { type: "pack:done"; outputs: string[]; durationMs: number }
   | { type: "done"; code: number };
 
-export type Voice = { id: string; gender: "Female" | "Male" | "Neutral" };
-
 declare global {
   interface Window {
     anki: {
@@ -24,6 +22,7 @@ declare global {
       run(opts: any): void;
       onEvent(cb: (e: ProgressEvent) => void): void;
       openPath?(path: string): Promise<{ ok: boolean; error?: string }>;
+      cancel?(): void;
     };
   }
 }

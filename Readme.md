@@ -1,13 +1,13 @@
 # Anki One
 
-**Anki One** is a toolchain for generating [Anki](https://apps.ankiweb.net/) decks (`.apkg`) from CSV files.  
+**Anki One** is a toolchain for generating [Anki](https://apps.ankiweb.net/) decks (`.apkg`) from CSV files.
 
 It combines:
 
-- **TTS (Text-to-Speech)** using [Microsoft Edge TTS](https://pypi.org/project/edge-tts/) to generate audio
-- **Image search** via [icrawler](https://pypi.org/project/icrawler/) to attach images
+- **TTS (Text-to-Speech)** using Microsoft Edge TTS to generate audio
+- **Image fetching** (search or generation) to attach images
 - **Deck building** via [anki-apkg-export](https://www.npmjs.com/package/anki-apkg-export)
-- A **desktop UI** (Electron + React + Material Web) for easy use
+- A **desktop UI** (Electron + React + Material Web)
 - A **Node.js core pipeline** for programmatic / CLI usage
 
 ---
@@ -19,8 +19,8 @@ anki-one/
 ├── packages/
 │   ├── core/         # Core library (pipeline, utils, image fetching, packaging)
 │   └── desktop/      # Electron + React + Material Web UI
-├── py/               # Python scripts for image fetching
-└── .venv/            # Optional local Python virtualenv
+├── py/               # (Optional) Python helpers for image fetching
+└── .venv/            # (Optional) local Python virtualenv
 ```
 
 ---
@@ -28,13 +28,13 @@ anki-one/
 ## Features
 
 - Import **CSV** files with front/back columns
-- Generate **audio** for each back-side sentence
-- Fetch **images** from Google for each sentence
+- Generate **audio** for each note using Edge TTS
+- Fetch or generate **images** (configurable sources & styles)
 - Export to `.apkg` with:
   - Front text
   - Back text
-  - Audio (MP3, playable in Anki)
-  - Image (JPEG/PNG/WebP/AVIF)
+  - Audio (MP3)
+  - Images (JPEG/PNG/WebP/AVIF)
 - Configurable options:
   - Voice (hundreds of locales/genders)
   - Images per note
@@ -42,10 +42,16 @@ anki-one/
   - SQL.js memory size
   - Image quality/size/format
   - Batch size for large decks
-- Modern **Material Design 3** UI
+  - Image mode: **search** or **generate**
+- Modern **Material Design 3** UI with dark mode, subtle **transitions/animations**
+- **Fail-fast** checks and better controls:
+  - **Preflight CSV header check** (detects wrong column names before running)
+  - **Cancel** current run
+  - **Reset** UI state after errors or runs
+  - **Open media folder** button in the top bar
 - Works as:
-  - **Electron app** with graphical interface
-  - **Node.js library / CLI** for automation
+  - **Electron app** (GUI)
+  - **Node.js library / CLI** (automation)
 
 ---
 
@@ -55,32 +61,25 @@ anki-one/
 - Node.js **18+**
 - [pnpm](https://pnpm.io/) package manager
 
-### Python
-- Python **3.9+** (tested with Python 3.13)
-- Installed packages:
+### Python (optional)
+If you use the Python image helpers:
+- Python **3.9+**
+- Install packages:
   ```bash
   pip install icrawler edge-tts
   ```
+- Ensure `python3` is in your `PATH`.
 
-### External Tools
-- `edge-tts` (installed with the Python package)
-- `python3` available in `PATH`
+> The desktop app can fetch/generate images without Python. Python is **optional**.
 
 ---
 
-## Installation
-
-Clone the repo and install dependencies:
+## Install
 
 ```bash
 git clone https://github.com/your-org/anki-one.git
 cd anki-one
 pnpm install
-```
-
-Build all packages:
-
-```bash
 pnpm build
 ```
 
@@ -90,28 +89,37 @@ pnpm build
 
 ### Desktop App (Electron UI)
 
-Start the desktop app in development:
-
+**Dev mode:**
 ```bash
 pnpm --filter anki-one-desktop dev
 ```
 
-This opens an **Electron window** with the Anki One UI.  
+This opens an **Electron** window.
 
-From here you can:
+1) Pick a **CSV file**.  
+2) Click **Build Deck** (if no output path is set, you’ll be prompted to choose it).  
+3) Configure options (voice, columns, images, etc.).  
+4) Watch progress; use **Stop** to cancel or **Reset** to clear.
 
-1. Pick a **CSV file** (with `Front` / `Back` columns).
-2. Choose an **output `.apkg` path**.
-3. Configure deck options (voice, images, memory, etc.).
-4. Click **Build Deck**.
+> In a normal browser (Vite preview), deck building is disabled. Use Electron for full functionality.
 
-⚠️ In the browser preview (Vite dev server), the app runs in **preview mode** — deck building is disabled until run in Electron.
+**Production builds:**
+```bash
+# macOS .dmg
+pnpm --filter anki-one-desktop dist:mac
+
+# Windows .exe (NSIS)
+pnpm --filter anki-one-desktop dist:win
+
+# Linux AppImage
+pnpm --filter anki-one-desktop dist:linux
+```
+
+On macOS Gatekeeper: if macOS warns about an unidentified developer, right-click the app → **Open** → confirm.
 
 ---
 
 ### Core Library (Node.js)
-
-You can run the pipeline programmatically:
 
 ```ts
 import { runPipeline } from "@anki-one/core";
@@ -137,6 +145,12 @@ const { outputs, durationMs } = await runPipeline(
     imgStripMeta: true,
     imgNoEnlarge: true,
     batchSize: 1000000,
+
+    // image config (optional)
+    imageMode: "search",   // or "generate"
+    genProvider: "pollinations",
+    genStyle: "anime",
+    useImageCache: true,
   },
   (event) => {
     console.log("Progress event:", event);
@@ -148,10 +162,10 @@ const { outputs, durationMs } = await runPipeline(
 
 ## CSV Format
 
-Your input CSV must include at least two columns:
+Your CSV must include at least two columns (defaults used by the app):
 
-- `Front (English sentence)` – text for the front of the card
-- `Back (German sentence)` – text for the back (used for TTS + images)
+- `Front (English sentence)` – the front of the card  
+- `Back (German sentence)` – the back (used for TTS + images)
 
 Example:
 
@@ -162,64 +176,76 @@ Good morning,Guten Morgen
 I like coffee,Ich mag Kaffee
 ```
 
+You can rename these in **Settings → CSV Columns**.
+
+---
+
+## UI Notes
+
+- **Build** enables after you select a **CSV** in Electron. If output isn’t set, the app will **prompt for an output file** on click.
+- **Cancel** cleanly terminates the run.
+- **Reset** clears progress state and lets you start fresh.
+- **Open media folder** (top bar button) opens the folder that contains generated audio/images for the chosen output path.
+
+---
+
+## Troubleshooting
+
+### “Build” button is disabled
+- You’re likely in a **web browser preview**. Use Electron:
+  ```bash
+  pnpm --filter anki-one-desktop dev
+  ```
+- Or you haven’t selected a **CSV** yet.
+- If the button still appears disabled, ensure you’re not currently **running** a job.
+
+### Wrong CSV column names
+- The app **preflights** your CSV and will show a clear error if required columns are missing.
+- Set the correct names in **Settings → CSV Columns** (defaults are above).
+
+### Stuck “loading” or long runs
+- Use **Stop** to cancel the run.  
+- Use **Reset** to clear the UI after errors.
+
+### Packaging: “Cannot find module ‘csv-parse/sync’”
+- The main process no longer depends on that package. Rebuild:
+  ```bash
+  pnpm -F anki-one-desktop build
+  pnpm -F anki-one-desktop dist:mac
+  ```
+- Ensure `electron/dist/**` and `dist/**` are included by electron-builder (already configured in `package.json`).
+
+### Python-related issues
+- Only needed if you use the optional Python helpers.  
+- Make sure `python3` is in `PATH` and `icrawler` / `edge-tts` are installed.
+
 ---
 
 ## Development
 
 ### Desktop
-
 ```bash
 cd packages/desktop
 pnpm dev
 ```
 
 ### Core
-
 ```bash
 cd packages/core
 pnpm build
 ```
 
-Run tests:
-
+Run tests (if present):
 ```bash
 pnpm test
 ```
 
 ---
 
-## Python Image Fetcher
+## Roadmap / Ideas
 
-Images are fetched via:
-
-```
-packages/core/py/fetch_image.py <query> <count> <out_dir>
-```
-
-This script uses `icrawler` to fetch Google Images. Example:
-
-```bash
-python3 packages/core/py/fetch_image.py "dog" 5 ./media/images/dog
-```
-
----
-
-## Troubleshooting
-
-- **Error: edge-tts not found**  
-  → Ensure `pip install edge-tts` and `python3 -m edge_tts --help` works.
-
-- **Error: Python lacks packages**  
-  → Install `icrawler` and `edge-tts` into your active Python environment.
-
-- **No rows in input CSV**  
-  → Check your CSV encoding and column headers.
-
-- **Build disabled in browser**  
-  → Run in Electron via `pnpm --filter anki-one-desktop dev`.
-
----
-
-## License
-
-MIT © 2025 Your Name
+- More image providers & styles
+- Per-note overrides
+- Batch reports and analytics
+- Drag-drop CSVs
+- Presets for popular deck formats
