@@ -1,31 +1,59 @@
-/* ---------- App theme tokens ---------- */
+/* ===========================
+   Anki One – App Styles
+   (layout polish + dark theme + input/select contrast)
+   =========================== */
+
+/* ---------- THEME TOKENS ---------- */
 :root {
-  /* already set earlier, keep/adjust */
+  --app-topbar-h: 56px;
+
+  /* Material-ish base */
   --md-sys-color-primary: #6750a4;
   --md-sys-color-on-primary: #ffffff;
 
   --md-sys-color-surface: #f7f3ff;
   --md-sys-color-on-surface: #1d1b20;
-  --md-sys-color-surface-variant: #e7def7;
-  --md-sys-color-outline: #79747e;
-
-  --app-topbar-h: 56px;
   --md-sys-color-on-surface-variant: #5c5b66;
   --md-sys-color-outline: #79747e;
+
+  /* Elevation */
+  --surface-container: #ffffff;
+  --surface-elev-1: #ffffff;
+  --surface-elev-2: #faf7ff;
+
+  /* Inputs */
+  --input-bg: color-mix(in oklab, var(--surface-elev-1) 96%, transparent);
+  --input-fg: #1b1b1f;    /* strong on-surface */
+  --input-muted: #56565f; /* labels/placeholders */
+  --input-outline: color-mix(in oklab, var(--md-sys-color-outline) 55%, transparent);
+
+  /* Misc (used by Log panel fallback) */
+  --md-sys-color-surface-container-highest: #f3f0f7;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --md-sys-color-surface: #141218;
-    --md-sys-color-on-surface: #e6e0e9;
+    --md-sys-color-surface: #121018;
+    --md-sys-color-on-surface: #ebe6f0;
     --md-sys-color-on-surface-variant: #cac4d0;
-    --md-sys-color-outline: #938f99;
-     --md-sys-color-surface-container: #1d1b20;
-    --md-sys-color-surface-container-highest: #1c1b1f;
+    --md-sys-color-outline: #8d8793;
+
+    /* Elevation in dark */
+    --surface-container: #1a1721;
+    --surface-elev-1: #1e1a26;
+    --surface-elev-2: #201d2a;
+
+    /* Inputs in dark */
+    --input-bg: #231f2c;
+    --input-fg: #f1ecf8;
+    --input-muted: #b8b2c0;
+    --input-outline: #6e6880;
+
+    --md-sys-color-surface-container-highest: #201c27;
   }
 }
 
-/* ---------- Background ---------- */
+/* ---------- BACKGROUND ---------- */
 html, body, #root { height: 100%; }
 body {
   background:
@@ -36,31 +64,26 @@ body {
   color: var(--md-sys-color-on-surface);
 }
 
-md-select-option {
-  --md-sys-color-on-surface-variant: var(--md-sys-color-on-surface);
-}
-
-/* ---------- Layout container ---------- */
+/* ---------- CONTAINER ---------- */
 .container-page {
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 16px;
 }
 
-/* ---------- Top bar ---------- */
+/* ---------- TOP BAR ---------- */
 .app-navbar {
   position: sticky;
   top: 0;
   z-index: 50;
   height: var(--app-topbar-h);
-  backdrop-filter: saturate(1.2) blur(8px);
-  background: color-mix(in oklab, var(--md-sys-color-surface) 82%, transparent);
-  border-bottom: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent);
+  backdrop-filter: saturate(1.1) blur(8px);
+  background: color-mix(in oklab, var(--md-sys-color-surface) 86%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 20%, transparent);
   box-shadow:
-    0 0.5px 0 color-mix(in oklab, var(--md-sys-color-outline) 14%, transparent),
-    0 6px 16px #00000010;
+    0 0.5px 0 color-mix(in oklab, var(--md-sys-color-outline) 10%, transparent),
+    0 10px 24px #00000010;
 }
-
 .app-navbar__row {
   height: 100%;
   display: grid;
@@ -68,46 +91,186 @@ md-select-option {
   align-items: center;
   gap: 12px;
 }
+.app-title { font-weight: 700; letter-spacing: .2px; }
+.app-subtitle { opacity: .75; font-size: .9rem; }
 
-.app-title {
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-
-.app-subtitle {
-  opacity: 0.7;
-  font-size: 0.9rem;
-}
-
-/* Icon buttons using Material Symbols */
+/* Top-right icon buttons */
 .icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 36px;
-  width: 36px;
-  border-radius: 18px;
-  border: 1px solid transparent;
-  background: transparent;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px; width: 36px; border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent);
+  background: color-mix(in oklab, var(--surface-elev-1) 85%, transparent);
+  color: var(--md-sys-color-on-surface);
   cursor: pointer;
-  color: #f5f5dc;
 }
-.icon-btn:hover {
-  background: color-mix(in oklab, var(--md-sys-color-outline) 12%, transparent);
-}
-.icon-btn:active {
-  background: color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent);
-}
+.icon-btn:hover { background: color-mix(in oklab, var(--surface-elev-2) 85%, transparent); }
+.icon-btn:active { transform: translateY(0.5px); }
+.icon-btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .icon-btn .material-symbols-rounded { font-size: 20px; }
 
-/* Give main content a little breathing room under the sticky bar */
-main.app-main {
-  padding-top: 8px;
+/* ---------- PAGE LAYOUT ---------- */
+main.app-main { padding-top: 12px; }
+
+.grid-page {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 980px) {
+  .grid-page {
+    grid-template-columns: 1.8fr .9fr; /* wider form, narrower tools */
+    align-items: start;
+  }
+  .sticky-col {
+    position: sticky;
+    top: calc(var(--app-topbar-h) + 12px);
+  }
 }
 
-/* ---------- Keep your existing utility classes ---------- */
+/* ---------- SECTION CARDS ---------- */
+.section-card {
+  background: var(--surface-container);
+  border: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 14%, transparent);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.08),
+    0 6px 20px rgba(0,0,0,.08);
+  padding: 16px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 12px 0;
+}
+.section-header .badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: color-mix(in oklab, var(--md-sys-color-primary) 24%, var(--surface-elev-1));
+  color: var(--md-sys-color-on-surface);
+  font-weight: 700; font-size: 12px;
+  border: 1px solid color-mix(in oklab, var(--md-sys-color-primary) 40%, transparent);
+}
+.section-title { font-weight: 700; }
+.section-desc { opacity: .75; font-size: 12px; }
+
+/* ---------- FORMS GRID ---------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+@media (min-width: 820px) {
+  .form-grid.two-col { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---------- UTILITIES ---------- */
+.m-0 { margin: 0; }
+.mt-0 { margin-top: 0; }
+.mt-8 { margin-top: 8px; }
+.space-y-6 > * + * { margin-top: 1.5rem; }
+
 .input { width: 100%; padding: 8px 10px; border: 1px solid #8883; border-radius: 10px; color: #474545a6;}
 .btn { padding: 10px 14px; border-radius: 12px; border: 1px solid #8883; background: #fff1; cursor: pointer; }
 .btn.primary { background: #4f46e5; color: white; border-color: transparent; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .log { width: 100%; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border-radius: 10px; border: 1px solid #8883; }
+
+/* =========================================================
+   MATERIAL WEB – INPUT/SELECT CONTRAST
+   ========================================================= */
+
+/* Text fields */
+md-filled-text-field {
+  --md-filled-text-field-container-color: var(--input-bg);
+  --md-filled-text-field-input-text-color: var(--input-fg);
+  --md-filled-text-field-input-text-placeholder-color: var(--input-muted);
+  --md-filled-text-field-label-text-color: var(--input-muted);
+  --md-filled-text-field-active-indicator-color: var(--input-outline);
+  --md-filled-text-field-focus-active-indicator-color: var(--md-sys-color-primary);
+  caret-color: var(--md-sys-color-primary);
+}
+
+/* Read-only fields (file paths) should still look clear */
+md-filled-text-field[readonly],
+md-filled-text-field[readonly]::part(field),
+md-filled-text-field[readonly]::part(input) {
+  --md-filled-text-field-input-text-color: var(--input-fg);
+  --md-filled-text-field-label-text-color: var(--input-muted);
+  opacity: 1;
+}
+
+/* Select trigger (the closed select) */
+md-filled-select {
+  --md-filled-select-container-color: var(--input-bg);
+  --md-filled-select-active-indicator-color: var(--input-outline);
+  --md-filled-select-focus-active-indicator-color: var(--md-sys-color-primary);
+
+  /* Text in the closed trigger */
+  --md-sys-color-on-surface: var(--input-fg);
+
+  /* ===== CRITICAL: TOKENS APPLIED ON HOST to affect shadow dropdown ===== */
+  /* Menu surface */
+  --md-menu-container-color: var(--surface-elev-2);
+
+  /* Unselected option rows (both list-item and menu-item paths) */
+  --md-list-item-label-text-color: var(--input-fg);
+  --md-list-item-supporting-text-color: var(--input-muted);
+  --md-list-item-container-color: transparent;
+
+  --md-menu-item-label-text-color: var(--input-fg);
+  --md-menu-item-supporting-text-color: var(--input-muted);
+  --md-menu-item-container-color: transparent;
+
+  /* Hover/focus layers */
+  --md-list-item-hover-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
+  --md-list-item-focus-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
+  --md-menu-item-hover-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
+  --md-menu-item-focus-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
+
+  /* Selected option row */
+  --md-list-item-selected-container-color: color-mix(in oklab, var(--md-sys-color-primary) 18%, var(--surface-elev-2));
+  --md-list-item-selected-label-text-color: var(--input-fg);
+  --md-menu-item-selected-container-color: color-mix(in oklab, var(--md-sys-color-primary) 18%, var(--surface-elev-2));
+  --md-menu-item-selected-label-text-color: var(--input-fg);
+}
+
+/* (Optional: reinforce general option tokens for any light-DOM usage) */
+md-select-option {
+  --md-sys-color-on-surface: var(--input-fg);
+  --md-sys-color-on-surface-variant: var(--input-muted);
+}
+
+/* =========================================================
+   MENU/OPTIONS – soft reinforcement (works when parts are exposed)
+   ========================================================= */
+md-menu::part(container),
+md-menu::part(surface) {
+  background: var(--surface-elev-2);
+}
+md-select-option::part(container) {
+  background: transparent;
+}
+md-select-option[aria-selected="true"]::part(container) {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 18%, var(--surface-elev-2));
+}
+md-select-option::part(headline),
+md-select-option::part(label) {
+  color: var(--input-fg);
+}
+md-select-option::part(supporting-text),
+md-select-option::part(subhead) {
+  color: var(--input-muted);
+}
+md-select-option:hover::part(container) {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
+}
+md-select-option:focus-visible::part(container) {
+  background: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
+}
+
+/* Last-resort fallback (in case the build renders role=option nodes) */
+md-menu [role="option"],
+md-menu [role="option"] * {
+  color: var(--input-fg) !important;
+}
