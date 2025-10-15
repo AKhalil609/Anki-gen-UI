@@ -5,6 +5,8 @@ export const defaultOpts = {
   concurrency: 2,
   colFront: "Front (English sentence)",
   colBack: "Back (German sentence)",
+  ttsFrom: "back" as "front" | "back",
+  imagesFrom: "back" as "front" | "back",
   sqlMemoryMB: 512,
   useDownsample: true,
   imgMaxWidth: 480,

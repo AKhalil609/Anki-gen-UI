@@ -11,7 +11,8 @@ type Props = {
 
 export default function ImageSettings({ opts, setOpts }: Props) {
   // Helpers to read values from Material Web fields
-  const setFromEvent = (key: string, numeric = false) =>
+  const setFromEvent =
+    (key: string, numeric = false) =>
     (e: React.FormEvent<HTMLElement>) => {
       const target = e.target as HTMLInputElement;
       const raw = target?.value ?? "";
@@ -19,8 +20,12 @@ export default function ImageSettings({ opts, setOpts }: Props) {
     };
 
   // Switch attributes (Material: boolean presence)
-  const downsampleAttr = opts.useDownsample ? ({ selected: true } as const) : ({} as const);
-  const cacheAttr = opts.useImageCache ? ({ selected: true } as const) : ({} as const);
+  const downsampleAttr = opts.useDownsample
+    ? ({ selected: true } as const)
+    : ({} as const);
+  const cacheAttr = opts.useImageCache
+    ? ({ selected: true } as const)
+    : ({} as const);
 
   return (
     <details
@@ -53,7 +58,13 @@ export default function ImageSettings({ opts, setOpts }: Props) {
         </span>
       </summary>
 
-      <div style={{ padding: 16, borderTop: "1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent)" }}>
+      <div
+        style={{
+          padding: 16,
+          borderTop:
+            "1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent)",
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -69,8 +80,29 @@ export default function ImageSettings({ opts, setOpts }: Props) {
               onInput={setFromEvent("imageMode")}
               style={{ width: "100%" }}
             >
-              <md-select-option value="search"><div slot="headline">Search (Google/Openverse/Wiki)</div></md-select-option>
-              <md-select-option value="generate"><div slot="headline">Generate (Pollinations)</div></md-select-option>
+              <md-select-option value="search">
+                <div slot="headline">Search (Google/Openverse/Wiki)</div>
+              </md-select-option>
+              <md-select-option value="generate">
+                <div slot="headline">Generate (Pollinations)</div>
+              </md-select-option>
+            </md-filled-select>
+
+            <md-filled-select
+              label="Image source (which column)"
+              value={opts.imagesFrom ?? "back"}
+              onInput={(e: React.FormEvent<HTMLSelectElement>) => {
+                const v = (e.target as any).value ?? "back";
+                setOpts({ ...opts, imagesFrom: v });
+              }}
+              style={{ width: "100%", marginTop: 8 }}
+            >
+              <md-select-option value="front">
+                <div slot="headline">Front column</div>
+              </md-select-option>
+              <md-select-option value="back">
+                <div slot="headline">Back column</div>
+              </md-select-option>
             </md-filled-select>
           </div>
 
@@ -83,13 +115,27 @@ export default function ImageSettings({ opts, setOpts }: Props) {
                 onInput={setFromEvent("genStyle")}
                 style={{ width: "100%" }}
               >
-                <md-select-option value=""><div slot="headline">None</div></md-select-option>
-                <md-select-option value="anime"><div slot="headline">Anime</div></md-select-option>
-                <md-select-option value="comic"><div slot="headline">Comic</div></md-select-option>
-                <md-select-option value="illustration"><div slot="headline">Illustration</div></md-select-option>
-                <md-select-option value="photorealistic"><div slot="headline">Photorealistic</div></md-select-option>
-                <md-select-option value="watercolor"><div slot="headline">Watercolor</div></md-select-option>
-                <md-select-option value="3D render"><div slot="headline">3D Render</div></md-select-option>
+                <md-select-option value="">
+                  <div slot="headline">None</div>
+                </md-select-option>
+                <md-select-option value="anime">
+                  <div slot="headline">Anime</div>
+                </md-select-option>
+                <md-select-option value="comic">
+                  <div slot="headline">Comic</div>
+                </md-select-option>
+                <md-select-option value="illustration">
+                  <div slot="headline">Illustration</div>
+                </md-select-option>
+                <md-select-option value="photorealistic">
+                  <div slot="headline">Photorealistic</div>
+                </md-select-option>
+                <md-select-option value="watercolor">
+                  <div slot="headline">Watercolor</div>
+                </md-select-option>
+                <md-select-option value="3D render">
+                  <div slot="headline">3D Render</div>
+                </md-select-option>
               </md-filled-select>
             </div>
           )}
@@ -157,7 +203,9 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             }}
           >
             <div style={{ display: "grid" }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Downsample images</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>
+                Downsample images
+              </div>
               <div style={{ opacity: 0.75, fontSize: 12 }}>
                 Reduce large originals to fit within Max Width/Height
               </div>
@@ -181,9 +229,12 @@ export default function ImageSettings({ opts, setOpts }: Props) {
             }}
           >
             <div style={{ display: "grid" }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Use cached images</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>
+                Use cached images
+              </div>
               <div style={{ opacity: 0.75, fontSize: 12 }}>
-                Reuse existing images if available; otherwise fetch or generate new ones.
+                Reuse existing images if available; otherwise fetch or generate
+                new ones.
               </div>
             </div>
 

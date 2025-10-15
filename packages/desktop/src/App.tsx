@@ -11,7 +11,6 @@ import ImageSettings from "./components/ImageSettings";
 import ActionsPanel from "./components/ActionsPanel";
 import LogPanel from "./components/LogPanel";
 import OutputsPanel from "./components/OutputsPanel";
-// import MaterialDemo from "./MaterialDemo";
 
 export default function App() {
   const [csv, setCsv] = useState<string | null>(null);
@@ -46,6 +45,22 @@ export default function App() {
   const { isElectron, chooseFile, chooseOut, run } = useElectronBridge(onEvent);
   const canRun = useMemo(() => !!csv && !!out && !running, [csv, out, running]);
 
+  // NEW: open media folder button handler
+  const handleOpenMedia = useCallback(async () => {
+    if (!isElectron || !out) return;
+    const mediaDir = pathLike(out, "media");
+    try {
+      const res = await (window as any).anki?.openPath?.(mediaDir);
+      if (!res?.ok) {
+        console.error("Failed to open media path:", res?.error);
+        alert("Could not open media folder. It may not exist yet.");
+      }
+    } catch (err) {
+      console.error("Exception while opening media path:", err);
+      alert("Could not open media folder.");
+    }
+  }, [isElectron, out]);
+
   const handleRun = () => {
     if (!csv || !out) return;
     if (!isElectron || !run) {
@@ -68,6 +83,9 @@ export default function App() {
       concurrency: Number(opts.concurrency) || 2,
       colFront: opts.colFront,
       colBack: opts.colBack,
+      ttsFrom: opts.ttsFrom ?? "back",
+      imagesFrom: opts.imagesFrom ?? "back",
+
       sqlMemoryMB: Number(opts.sqlMemoryMB) || 512,
       useDownsample: !!opts.useDownsample,
       imgMaxWidth: Number(opts.imgMaxWidth) || 480,
@@ -78,13 +96,15 @@ export default function App() {
       imgNoEnlarge: !!opts.imgNoEnlarge,
       batchSize: Number(opts.batchSize) || 1000000,
 
-      // --- NEW ---
-      imageMode: opts.imageMode, // "search" | "generate"
-      genProvider: opts.genProvider, // "pollinations"
-      genStyle: opts.genStyle, // e.g., "anime"
-      useImageCache: !!opts.useImageCache, // reuse local images if present
+      imageMode: opts.imageMode,
+      genProvider: opts.genProvider,
+      genStyle: opts.genStyle,
+      useImageCache: !!opts.useImageCache,
     });
   };
+
+  // For a subtle "disabled" look on the icon if not available
+  const openMediaDisabled = !isElectron || !out;
 
   return (
     <div className="min-h-screen bg-base-100">
@@ -107,7 +127,29 @@ export default function App() {
             <div className="app-subtitle">CSV → TTS + Images → .apkg</div>
           </div>
 
-          <div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {/* NEW: Open media folder */}
+            <button
+              className="icon-btn"
+              title={
+                openMediaDisabled
+                  ? "Pick an output path in the Electron app first"
+                  : "Open media folder"
+              }
+              aria-disabled={openMediaDisabled}
+              onClick={() => {
+                if (!openMediaDisabled) handleOpenMedia();
+              }}
+              style={
+                openMediaDisabled
+                  ? { opacity: 0.5, cursor: "not-allowed" }
+                  : undefined
+              }
+            >
+              <span className="material-symbols-rounded">folder_open</span>
+            </button>
+
+            {/* Existing Docs/help button */}
             <button
               className="icon-btn"
               title="Docs"
@@ -125,7 +167,6 @@ export default function App() {
       </div>
 
       <main className="container-page app-main py-6 space-y-6">
-        {/* <MaterialDemo /> */}
         {!isElectron && (
           <div className="alert alert-warning shadow">
             <span>

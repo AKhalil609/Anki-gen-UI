@@ -66,10 +66,10 @@ function cleanSentence(s: string): string {
   return out;
 }
 
-/** Build prompt using Front only for term focus, and strong no-text constraint. */
-function buildGenerationPrompt(front: string, _back: string, style?: string) {
-  const english = cleanSentence(front);
-  const term = extractParenTerm(front) || "";
+/** Build prompt from the chosen column text, with strong “no text” constraint. */
+function buildGenerationPrompt(text: string, style?: string) {
+  const english = cleanSentence(text);
+  const term = extractParenTerm(text) || "";
   const focus = term
     ? ` Emphasize "${term}" as the main, clearly recognizable subject.`
     : "";
@@ -87,7 +87,7 @@ async function listCached(folder: string, count: number): Promise<string[]> {
     const files = entries
       .filter((d) => d.isFile())
       .map((d) => d.name)
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) // "000001" first
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
       .slice(0, Math.max(0, count))
       .map((name) => path.join(folder, name));
     return files;
@@ -146,7 +146,11 @@ export type PipelineOptions = {
   imageMode?: "search" | "generate";
   genProvider?: "pollinations";
   genStyle?: string;
-  useImageCache?: boolean; // --- NEW ---
+  useImageCache?: boolean;
+
+  // NEW: source selectors
+  ttsFrom?: "front" | "back";
+  imagesFrom?: "front" | "back";
 };
 
 export type Progress =
@@ -224,16 +228,18 @@ export async function runPipeline(
   const resolvedMode = opts.imageMode ?? "search";
   const useCache = !!(opts.useImageCache ?? true);
 
+  const ttsFrom = (opts.ttsFrom ?? "back") as "front" | "back";
+  const imagesFrom = (opts.imagesFrom ?? "back") as "front" | "back";
+
   send({
     type: "log",
     level: "info",
-    message: `Image mode: ${
-      resolvedMode === "generate"
-        ? `generate/${resolvedProvider}`
-        : "search"
-    }${opts.genStyle ? ` (style: ${opts.genStyle})` : ""} • cache: ${
-      useCache ? "on" : "off"
-    }`,
+    message:
+      `Image mode: ${
+        resolvedMode === "generate" ? `generate/${resolvedProvider}` : "search"
+      }${opts.genStyle ? ` (style: ${opts.genStyle})` : ""} • cache: ${
+        useCache ? "on" : "off"
+      } • ttsFrom=${ttsFrom} • imagesFrom=${imagesFrom}`,
   });
 
   send({ type: "preflight", message: "Reading CSV…" });
@@ -280,58 +286,64 @@ export async function runPipeline(
         running++;
         send({ type: "progress", ...payload() });
         try {
-          if (!w.back) {
+          // Nothing to do if both sides are empty
+          if (!w.back && !w.front) {
             done++;
             running--;
             send({ type: "progress", ...payload() });
             return;
           }
 
-          // ---------- TTS ----------
-          const mp3 = buildFilename(w.index, w.back, ".mp3");
-          const outPath = path.join(opts.mediaDir, mp3);
-          if (!opts.dryRun && !fs.existsSync(outPath)) {
-            let attempt = 0;
-            const maxRetry = 2;
-            while (true) {
-              attempt++;
-              try {
-                await synthesizeToFile({
-                  text: w.back,
-                  voice: opts.voice,
-                  rate: opts.rate,
-                  pitch: opts.pitch,
-                  volume: opts.volume,
-                  outFile: outPath,
-                  verbose: !!opts.verbose,
-                });
-                break;
-              } catch (err) {
-                if (attempt > maxRetry) {
-                  throw new Error(
-                    `edge-tts-universal failed after ${maxRetry} retries: ${String(
-                      err
-                    )}`
-                  );
+          // ---------- TTS (pick source) ----------
+          const ttsText = ttsFrom === "front" ? w.front : w.back;
+          if (ttsText) {
+            const mp3 = buildFilename(w.index, ttsText, ".mp3");
+            const outPath = path.join(opts.mediaDir, mp3);
+            if (!opts.dryRun && !fs.existsSync(outPath)) {
+              let attempt = 0;
+              const maxRetry = 2;
+              while (true) {
+                attempt++;
+                try {
+                  await synthesizeToFile({
+                    text: ttsText,
+                    voice: opts.voice,
+                    rate: opts.rate,
+                    pitch: opts.pitch,
+                    volume: opts.volume,
+                    outFile: outPath,
+                    verbose: !!opts.verbose,
+                  });
+                  break;
+                } catch (err) {
+                  if (attempt > maxRetry) {
+                    throw new Error(
+                      `edge-tts-universal failed after ${maxRetry} retries: ${String(
+                        err
+                      )}`
+                    );
+                  }
+                  ttsRetries++;
+                  send({ type: "progress", ...payload() });
                 }
-                ttsRetries++;
-                send({ type: "progress", ...payload() });
               }
             }
+            w.mp3Name = mp3;
           }
-          w.mp3Name = mp3;
 
-          // ---------- Images ----------
+          // ---------- Images (pick source) ----------
           const usingGen =
             resolvedMode === "generate" && resolvedProvider === "pollinations";
+          const imageText = imagesFrom === "front" ? w.front : w.back;
 
           let found: (SearchImageResult | GenImageResult)[] = [];
 
-          if (!opts.dryRun) {
+          if (!opts.dryRun && imageText) {
             // Compute folders for cache management
-            const prompt = buildGenerationPrompt(w.front, w.back, opts.genStyle);
+            const prompt = buildGenerationPrompt(imageText, opts.genStyle);
             const genFolder = genOutFolder(opts.imagesDir, w.index, prompt);
-            const searchQuery = imageQueryFromSentence(w.back);
+
+            const searchQuery = imageQueryFromSentence(imageText);
             const searchFolder = searchOutFolder(
               opts.imagesDir,
               w.index,
@@ -348,17 +360,26 @@ export async function runPipeline(
                     level: "info",
                     message: `[#${w.index}] cache hit (generate): ${cached.length} file(s)`,
                   });
-                  found = cached.map((p) => ({ path: p, source: "cache/pollinations" }));
+                  found = cached.map((p) => ({
+                    path: p,
+                    source: "cache/pollinations",
+                  }));
                 }
               } else {
-                const cached = await listCached(searchFolder, opts.imagesPerNote);
+                const cached = await listCached(
+                  searchFolder,
+                  opts.imagesPerNote
+                );
                 if (cached.length) {
                   send({
                     type: "log",
                     level: "info",
                     message: `[#${w.index}] cache hit (search): ${cached.length} file(s)`,
                   });
-                  found = cached.map((p) => ({ path: p, source: "cache/search" }));
+                  found = cached.map((p) => ({
+                    path: p,
+                    source: "cache/search",
+                  }));
                 }
               }
             } else {
@@ -373,8 +394,10 @@ export async function runPipeline(
             }
 
             // 3) If we still need more images than cached provided, fetch/generate
-            const shortBy =
-              Math.max(0, (opts.imagesPerNote || 1) - (found.length || 0));
+            const shortBy = Math.max(
+              0,
+              (opts.imagesPerNote || 1) - (found.length || 0)
+            );
 
             if (shortBy > 0) {
               if (usingGen) {
@@ -403,7 +426,9 @@ export async function runPipeline(
                   send({
                     type: "log",
                     level: "warn",
-                    message: `[#${w.index}] generation error: ${e?.message || e}`,
+                    message: `[#${w.index}] generation error: ${
+                      e?.message || e
+                    }`,
                   });
                 }
               }
@@ -417,11 +442,15 @@ export async function runPipeline(
                   level: "info",
                   message: `[#${w.index}] search fallback query: "${searchQuery}" (need ${stillShortBy})`,
                 });
-                const searched = await fetchImagesNode(w.index, searchQuery, {
-                  imagesDir: opts.imagesDir,
-                  count: stillShortBy,
-                  verbose: !!opts.verbose,
-                });
+                const searched = await fetchImagesNode(
+                  w.index,
+                  searchQuery,
+                  {
+                    imagesDir: opts.imagesDir,
+                    count: stillShortBy,
+                    verbose: !!opts.verbose,
+                  }
+                );
                 if (searched.length) found = found.concat(searched);
               }
             }
@@ -430,9 +459,10 @@ export async function runPipeline(
           if (!opts.dryRun && found.length > 0) {
             const first = found[0];
             const src = first.path;
+            const namingText = imageText || w.back || w.front || String(w.index);
             const outName = buildFilename(
               w.index,
-              w.back,
+              namingText,
               path.extname(src) || ".jpg"
             );
             const dest = path.join(opts.mediaDir, outName);
