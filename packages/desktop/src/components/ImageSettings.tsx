@@ -1,4 +1,3 @@
-// /packages/desktop/src/components/ImageSettings.tsx
 import "@material/web/select/filled-select";
 import "@material/web/select/select-option";
 import "@material/web/textfield/filled-text-field";

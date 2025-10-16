@@ -23,7 +23,7 @@ export default function AnkiIcon(props: React.SVGProps<SVGSVGElement>) {
            -6.2-3.3 -6.2 3.3 
            1.2-6.9 -5-4.9 
            7-.9z"
-        fill="white"        // star is white against filled box
+        fill="white"
         stroke="black"
       />
     </svg>

@@ -1,4 +1,3 @@
-// packages/desktop/electron/main.ts
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";

@@ -1,4 +1,3 @@
-// /packages/desktop/src/components/ActionsPanel.tsx
 import "@material/web/button/filled-button";
 import "@material/web/progress/linear-progress";
 import type { ProgressEvent } from "../types";
@@ -7,7 +6,6 @@ type ProgressLite = Extract<ProgressEvent, { type: "progress" }>;
 
 type Props = {
   isElectron: boolean;
-  /** Parent decides when Build is enabled (e.g., !!csv && isElectron && !running) */
   canRun: boolean;
   running: boolean;
   progress: ProgressLite | null;
@@ -16,7 +14,6 @@ type Props = {
   onRun: () => void;
   onCancel: () => void;
   onReset: () => void;
-  /** Optional message shown when Build is disabled */
   disabledReason?: string | null;
 };
 

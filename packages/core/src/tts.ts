@@ -1,4 +1,3 @@
-// packages/core/src/tts.ts (ESM)
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Communicate, NoAudioReceived } from "edge-tts-universal";

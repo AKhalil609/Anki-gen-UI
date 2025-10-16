@@ -1,4 +1,3 @@
-// packages/core/src/image.ts
 import * as path from "node:path";
 import { execa } from "execa";
 import { ensureDir, buildFilename } from "./util.js";
@@ -23,7 +22,7 @@ export type ImageFetchOpts = {
 };
 
 /**
- * Legacy Python (icrawler) path. Kept for compatibility, but your Node path is preferred.
+ * Legacy Python (icrawler) path. Kept for compatibility
  */
 export async function fetchImagesForSentence(
   index: number,

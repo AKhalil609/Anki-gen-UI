@@ -1,4 +1,3 @@
-// /packages/desktop/src/components/LogPanel.tsx
 type Props = { log: string };
 
 export default function LogPanel({ log }: Props) {

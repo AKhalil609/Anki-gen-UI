@@ -17,10 +17,9 @@ It combines:
 ```
 anki-one/
 ├── packages/
-│   ├── core/         # Core library (pipeline, utils, image fetching, packaging)
-│   └── desktop/      # Electron + React + Material Web UI
-├── py/               # (Optional) Python helpers for image fetching
-└── .venv/            # (Optional) local Python virtualenv
+    ├── core/         # Core library (pipeline, utils, image fetching, packaging)
+    └── desktop/      # Electron + React + Material Web UI
+
 ```
 
 ---
@@ -60,17 +59,6 @@ anki-one/
 ### Node.js
 - Node.js **18+**
 - [pnpm](https://pnpm.io/) package manager
-
-### Python (optional)
-If you use the Python image helpers:
-- Python **3.9+**
-- Install packages:
-  ```bash
-  pip install icrawler edge-tts
-  ```
-- Ensure `python3` is in your `PATH`.
-
-> The desktop app can fetch/generate images without Python. Python is **optional**.
 
 ---
 
@@ -214,10 +202,6 @@ You can rename these in **Settings → CSV Columns**.
   pnpm -F anki-one-desktop dist:mac
   ```
 - Ensure `electron/dist/**` and `dist/**` are included by electron-builder (already configured in `package.json`).
-
-### Python-related issues
-- Only needed if you use the optional Python helpers.  
-- Make sure `python3` is in `PATH` and `icrawler` / `edge-tts` are installed.
 
 ---
 
