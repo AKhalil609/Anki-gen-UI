@@ -1,12 +1,9 @@
 name: Release
-
 on:
   push:
-    tags:
-      - "v*.*.*"
-
+    tags: ['v*.*.*']
 permissions:
-  contents: write  # required to create/upload to Releases
+  contents: write
 
 jobs:
   build:
@@ -24,32 +21,18 @@ jobs:
           - os: ubuntu-latest
             buildCmd: pnpm --filter anki-one-desktop dist:linux
             glob: packages/desktop/dist/*.AppImage
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: "pnpm"
-
+        with: { node-version: 20, cache: pnpm }
       - uses: pnpm/action-setup@v4
-        with:
-          version: 8
-
-      - name: Install deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Build workspaces
-        run: pnpm -r build
-
-      # Build platform installer (dmg/exe/AppImage)
+        with: { version: 8 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r build
       - name: Build installer
         run: ${{ matrix.buildCmd }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # Upload to the GitHub Release for this tag
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
