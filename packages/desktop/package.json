@@ -17,6 +17,7 @@
   "build": {
     "appId": "com.ankione.app",
     "productName": "Anki One",
+    "artifactName": "Anki-One-${version}-${os}-${arch}.${ext}",
     "files": [
       "dist/**",
       "electron/dist/**",
@@ -52,7 +53,14 @@
       ],
       "category": "Education",
       "icon": "build"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "AKhalil609",
+        "repo": "Anki-gen-UI"
+      }
+    ]
   },
   "dependencies": {
     "@anki-one/core": "workspace:*",

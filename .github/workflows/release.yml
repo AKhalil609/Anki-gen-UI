@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write  # required to create/upload to Releases
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            buildCmd: pnpm --filter anki-one-desktop dist:mac
+            glob: packages/desktop/dist/*.dmg
+          - os: windows-latest
+            buildCmd: pnpm --filter anki-one-desktop dist:win
+            glob: packages/desktop/dist/*.exe
+          - os: ubuntu-latest
+            buildCmd: pnpm --filter anki-one-desktop dist:linux
+            glob: packages/desktop/dist/*.AppImage
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspaces
+        run: pnpm -r build
+
+      # Build platform installer (dmg/exe/AppImage)
+      - name: Build installer
+        run: ${{ matrix.buildCmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Upload to the GitHub Release for this tag
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.glob }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

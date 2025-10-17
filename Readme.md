@@ -16,7 +16,7 @@ It combines:
 
 ```
 anki-one/
-├── packages/
+└── packages/
     ├── core/         # Core library (pipeline, utils, image fetching, packaging)
     └── desktop/      # Electron + React + Material Web UI
 
