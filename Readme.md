@@ -134,8 +134,7 @@ const { outputs, durationMs } = await runPipeline(
     imgNoEnlarge: true,
     batchSize: 1000000,
 
-    // image config (optional)
-    imageMode: "search",   // or "generate"
+    imageMode: "search",
     genProvider: "pollinations",
     genStyle: "anime",
     useImageCache: true,

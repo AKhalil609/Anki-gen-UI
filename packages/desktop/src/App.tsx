@@ -128,7 +128,6 @@ export default function App() {
     setHasError(false);
     setProgress(null);
     setOutputs([]);
-    // setLog(""); // optional
   };
 
   const openMediaDisabled = !isElectron || !out;

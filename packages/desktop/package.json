@@ -7,12 +7,13 @@
   "description": "Build Anki decks from CSV with TTS and image fetching.",
   "author": "https://github.com/AKhalil609",
   "scripts": {
+    "icons": "node scripts/make-icons.mjs",
     "dev": "concurrently -k -n VITE,TS,ELEC -c auto \"vite --port 5175\" \"tsc -p electron/tsconfig.json -w\" \"wait-on tcp:5175 && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec 'electron electron/dist/main.js --enable-logging=stderr'\"",
     "start": "electron electron/dist/main.js",
     "build": "vite build && tsc -p electron/tsconfig.json && node scripts/embed-core.mjs",
     "dist:mac": "pnpm build && electron-builder --mac dmg",
-    "dist:win": "pnpm build && electron-builder --win nsis",
-    "dist:linux": "pnpm build && electron-builder --linux AppImage"
+    "dist:win": "pnpm build && pnpm icons && electron-builder --win nsis",
+    "dist:linux": "pnpm build && pnpm icons && electron-builder --linux AppImage"
   },
   "build": {
     "appId": "com.ankione.app",
@@ -99,9 +100,12 @@
     "electron-builder": "^26.0.12",
     "electronmon": "^2.0.3",
     "nodemon": "^3.1.10",
+    "png-to-ico": "^3.0.1",
     "postcss": "^8.5.6",
+    "sharp": "^0.34.4",
     "tailwindcss": "^4.1.13",
     "tailwindcss-animate": "^1.0.7",
+    "to-ico": "^1.1.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",
     "vite": "^5.4.0",
