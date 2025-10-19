@@ -1,3 +1,5 @@
+// /Users/ahmedhegab/Projects/anki-ui/anki-one/packages/core/src/pipeline.ts
+
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -113,6 +115,40 @@ function searchOutFolder(imagesDir: string, index: number, query: string) {
   return path.join(imagesDir, slug || "img");
 }
 
+/* ---------- CSV delimiter detection ---------- */
+
+/** Pick the most frequent candidate in the header line */
+function detectDelimiterFromHeader(firstLine: string): string {
+  const candidates = [",", ";", "\t", "|", ":"];
+  let best = ",";
+  let bestCount = -1;
+  for (const d of candidates) {
+    const c = (firstLine.match(new RegExp(`\\${d}`, "g")) || []).length;
+    if (c > bestCount) {
+      best = d;
+      bestCount = c;
+    }
+  }
+  return best;
+}
+
+function detectDelimiterFromFile(file: string): string {
+  const fd = fs.openSync(file, "r");
+  try {
+    const buf = Buffer.allocUnsafe(64 * 1024);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    let chunk = buf.slice(0, n).toString("utf8");
+    if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
+    const firstLine = chunk
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")[0] ?? "";
+    return detectDelimiterFromHeader(firstLine);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /* ---------------- Public types ---------------- */
 
 export type PipelineOptions = {
@@ -150,6 +186,9 @@ export type PipelineOptions = {
   // NEW: source selectors
   ttsFrom?: "front" | "back";
   imagesFrom?: "front" | "back";
+
+  // NEW: CSV delimiter override; undefined = auto-detect
+  csvDelimiter?: string; // ",", ";", "\t", "|", ":" or undefined
 };
 
 export type Progress =
@@ -169,22 +208,53 @@ export type Progress =
 
 /* ---------------- Internal helpers ---------------- */
 
-async function readCsv(file: string): Promise<Record<string, string>[]> {
+type Logger = (level: "info" | "warn" | "error", message: string) => void;
+
+async function readCsv(
+  file: string,
+  delimiterOverride?: string,
+  log?: Logger
+): Promise<Record<string, string>[]> {
   const rows: Record<string, string>[] = [];
+
+  // Decide delimiter once, then stick to it
+  const delimiter =
+    delimiterOverride && delimiterOverride.length
+      ? delimiterOverride
+      : detectDelimiterFromFile(file);
+
+  log?.("info", `CSV: using delimiter ${JSON.stringify(delimiter)}`);
+
   await new Promise<void>((resolve, reject) => {
     fs.createReadStream(file)
       .pipe(
         parse({
-          columns: true,
-          skip_empty_lines: true,
+          columns: true,                 // use header row as keys
+          delimiter,                     // ← critical for ; \t | :
           bom: true,
           trim: true,
+          skip_empty_lines: true,
+
+          // Be generous to avoid false "Invalid Record Length"
+          relax_quotes: true,
+          relax_column_count: true,
+          record_delimiter: ["\r\n", "\n", "\r"],
+
+          // Typical CSV quoting
+          escape: '"',
+          quote: '"',
         })
       )
       .on("data", (r: Record<string, string>) => rows.push(r))
       .on("end", () => resolve())
-      .on("error", reject);
+      .on("error", (err) => {
+        const msg =
+          `Failed to parse CSV with delimiter ${JSON.stringify(delimiter)}: ` +
+          (err?.message || String(err));
+        reject(new Error(msg));
+      });
   });
+
   return rows;
 }
 
@@ -214,6 +284,7 @@ export async function runPipeline(
   onProgress?: (p: Progress) => void
 ) {
   const send = (p: Progress) => onProgress?.(p);
+  const log: Logger = (level, message) => send({ type: "log", level, message });
   const started = Date.now();
 
   send({ type: "preflight", message: "Preparing output folders…" });
@@ -242,8 +313,9 @@ export async function runPipeline(
   });
 
   send({ type: "preflight", message: "Reading CSV…" });
-  const rows = await readCsv(opts.input);
+  const rows = await readCsv(opts.input, opts.csvDelimiter, log);
   if (rows.length === 0) throw new Error("No rows in input CSV.");
+
   if (!(opts.colFront in rows[0]) || !(opts.colBack in rows[0])) {
     throw new Error(`CSV missing "${opts.colFront}" and/or "${opts.colBack}"`);
   }

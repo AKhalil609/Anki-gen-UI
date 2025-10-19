@@ -25,7 +25,8 @@ async function terminateCurrentWorker(reason: "cancel" | "replace") {
     send({
       type: "log",
       level: "warn",
-      message: reason === "cancel" ? "Cancelled by user." : "Previous run stopped.",
+      message:
+        reason === "cancel" ? "Cancelled by user." : "Previous run stopped.",
     });
     send({ type: "done", code: reason === "cancel" ? 2 : 3 });
   } catch (e: any) {
@@ -58,13 +59,19 @@ function readCsvHeader(csvPath: string): string[] {
 }
 
 /** Preflight: verify CSV has the requested column headers */
-function csvHasColumns(csvPath: string, required: string[]): { ok: boolean; missing: string[]; header?: string[] } {
+function csvHasColumns(
+  csvPath: string,
+  required: string[]
+): { ok: boolean; missing: string[]; header?: string[] } {
   try {
     const header = readCsvHeader(csvPath).map((h) => String(h).trim());
     const missing = required.filter((r) => !header.includes(r));
     return { ok: missing.length === 0, missing, header };
   } catch (err: any) {
-    return { ok: false, missing: [`Failed to read CSV: ${err?.message || err}`] };
+    return {
+      ok: false,
+      missing: [`Failed to read CSV: ${err?.message || err}`],
+    };
   }
 }
 
@@ -164,7 +171,12 @@ function parseCsvChunkToRows(
   return rows;
 }
 
-function readCsvPreview(csvPath: string, maxRows: number, maxBytes: number) {
+function readCsvPreview(
+  csvPath: string,
+  maxRows: number,
+  maxBytes: number,
+  delimiterOverride?: string // <— NEW
+) {
   const fd = fs.openSync(csvPath, "r");
   try {
     const stat = fs.fstatSync(fd);
@@ -173,19 +185,26 @@ function readCsvPreview(csvPath: string, maxRows: number, maxBytes: number) {
     const bytesRead = fs.readSync(fd, buf, 0, toRead, 0);
     let chunk = buf.slice(0, bytesRead).toString("utf8");
 
-    // Detect delimiter based on first line
     const firstLine = chunk.split(/\r\n|\r|\n/)[0] ?? "";
-    const delimiter = detectDelimiter(firstLine);
+    // use override if provided, else detect
+    const delimiter =
+      delimiterOverride && delimiterOverride.length
+        ? delimiterOverride
+        : detectDelimiter(firstLine);
 
     const rows = parseCsvChunkToRows(chunk, delimiter, maxRows);
     if (!rows.length) {
-      return { ok: false, error: "No content found", header: [], rows: [], delimiter };
+      return {
+        ok: false,
+        error: "No content found",
+        header: [],
+        rows: [],
+        delimiter,
+      };
     }
 
     const header = rows[0] ?? [];
     const data = rows.slice(1, 1 + maxRows);
-
-    // Pad rows so table widths are stable
     const width = header.length;
     const padded = data.map((r) =>
       r.length < width ? [...r, ...Array(width - r.length).fill("")] : r
@@ -198,7 +217,7 @@ function readCsvPreview(csvPath: string, maxRows: number, maxBytes: number) {
       error: err?.message || String(err),
       header: [],
       rows: [],
-      delimiter: ",",
+      delimiter: delimiterOverride || ",",
     };
   } finally {
     fs.closeSync(fd);
@@ -249,7 +268,9 @@ function createWindow() {
 
   if (!app.isPackaged) {
     const url = "http://localhost:5175";
-    win.loadURL(url).catch((err) => console.error("[main] loadURL error:", err));
+    win
+      .loadURL(url)
+      .catch((err) => console.error("[main] loadURL error:", err));
     win.webContents.openDevTools({ mode: "detach" });
   } else {
     if (!fs.existsSync(prodIndexHtml)) {
@@ -261,7 +282,9 @@ function createWindow() {
       dialog.showErrorBox("Anki One – Missing index.html", msg);
     }
 
-    win.loadFile(prodIndexHtml).catch((err) => console.error("[main] loadFile error:", err));
+    win
+      .loadFile(prodIndexHtml)
+      .catch((err) => console.error("[main] loadFile error:", err));
     if (forceDevtools) win.webContents.openDevTools({ mode: "detach" });
   }
 }
@@ -326,21 +349,35 @@ ipcMain.handle("open-path", async (_evt, filePath: string) => {
 /** CSV preview: header + first N rows (fast + safe) */
 ipcMain.handle(
   "preview-csv",
-  async (_evt, filePath: string, opts?: { maxRows?: number; maxBytes?: number }) => {
+  async (
+    _evt,
+    filePath: string,
+    opts?: { maxRows?: number; maxBytes?: number; delimiter?: string }
+  ) => {
     try {
       if (!filePath || !fs.existsSync(filePath)) {
-        return { ok: false, error: "CSV path missing or not found", header: [], rows: [], delimiter: "," };
+        return {
+          ok: false,
+          error: "CSV path missing or not found",
+          header: [],
+          rows: [],
+          delimiter: ",",
+        };
       }
       const maxRows = Math.max(1, Math.min(50, opts?.maxRows ?? 8));
-      const maxBytes = Math.max(32 * 1024, Math.min(8 * 1024 * 1024, opts?.maxBytes ?? 2 * 1024 * 1024));
-      return readCsvPreview(filePath, maxRows, maxBytes);
+      const maxBytes = Math.max(
+        32 * 1024,
+        Math.min(8 * 1024 * 1024, opts?.maxBytes ?? 2 * 1024 * 1024)
+      );
+      const delimiterOverride = opts?.delimiter; // <— NEW
+      return readCsvPreview(filePath, maxRows, maxBytes, delimiterOverride);
     } catch (e: any) {
       return {
         ok: false,
         error: e?.message || String(e),
         header: [],
         rows: [],
-        delimiter: ",",
+        delimiter: opts?.delimiter || ",",
       };
     }
   }
@@ -357,38 +394,46 @@ ipcMain.on("run-pipeline", async (evt, payload) => {
       await terminateCurrentWorker("replace");
     }
 
-    const { input, colFront, colBack } = payload || {};
+    const { input, colFront, colBack, csvDelimiter } = payload || {};
     if (!input || !fs.existsSync(input)) {
-      send({ type: "log", level: "error", message: "CSV path is missing or not found." });
+      send({
+        type: "log",
+        level: "error",
+        message: "CSV path is missing or not found.",
+      });
       send({ type: "done", code: 1 });
       return;
     }
 
-    // Preflight header check (no third-party dependency)
-    const reqCols = [String(colFront || ""), String(colBack || "")].filter(Boolean);
-    if (reqCols.length === 2) {
-      const { ok, missing, header } = csvHasColumns(input, reqCols);
-      if (!ok) {
-        send({
-          type: "log",
-          level: "error",
-          message: `CSV is missing required column(s): ${missing.join(", ")}`
-            + (header ? `\nDetected header: [${header.join(", ")}]` : ""),
-        });
-        send({ type: "done", code: 1 });
-        return;
-      }
+    // ✅ (optional) use the delimiter override for preflight too:
+    // reuse readCsvPreview to parse header with delimiterOverride
+    const preview = readCsvPreview(input, 1, 64 * 1024, csvDelimiter);
+    const header = (preview.ok ? preview.header : []).map((h) =>
+      String(h).trim()
+    );
+    const reqCols = [String(colFront || ""), String(colBack || "")].filter(
+      Boolean
+    );
+    const missing = reqCols.filter((r) => !header.includes(r));
+    if (reqCols.length === 2 && missing.length) {
+      send({
+        type: "log",
+        level: "error",
+        message: `CSV is missing required column(s): ${missing.join(
+          ", "
+        )}\nDetected header: [${header.join(", ")}]`,
+      });
+      send({ type: "done", code: 1 });
+      return;
     }
 
     const workerPath = path.join(__dirname, "worker.js");
-    currentWorker = new Worker(workerPath, { workerData: { ...payload } });
-
-    const channel = evt.sender;
-
-    currentWorker.on("message", (m) => {
-      channel.send("pipeline-event", m);
+    currentWorker = new Worker(workerPath, {
+      workerData: { ...payload, csvDelimiter }, // <— ensure it’s present
     });
 
+    const channel = evt.sender;
+    currentWorker.on("message", (m) => channel.send("pipeline-event", m));
     currentWorker.on("error", (e) => {
       console.error("[worker] error:", e);
       channel.send("pipeline-event", {
@@ -399,7 +444,6 @@ ipcMain.on("run-pipeline", async (evt, payload) => {
       channel.send("pipeline-event", { type: "done", code: 1 });
       currentWorker = null;
     });
-
     currentWorker.on("exit", (code) => {
       channel.send("pipeline-event", { type: "done", code });
       currentWorker = null;

@@ -8,10 +8,13 @@ contextBridge.exposeInMainWorld("anki", {
   onEvent: (cb: (e: any) => void) => {
     const handler = (_e: unknown, data: unknown) => cb(data as any);
     ipcRenderer.on("pipeline-event", handler);
+    return () => ipcRenderer.off("pipeline-event", handler);
   },
   openPath: (p: string) => ipcRenderer.invoke("open-path", p),
 
   /** Get a small preview of the CSV: header + first few rows (safe, fast). */
-  previewCsv: (filePath: string, opts?: { maxRows?: number; maxBytes?: number }) =>
-    ipcRenderer.invoke("preview-csv", filePath, opts ?? {}),
+  previewCsv: (
+    filePath: string,
+    opts?: { maxRows?: number; maxBytes?: number }
+  ) => ipcRenderer.invoke("preview-csv", filePath, opts ?? {}),
 });

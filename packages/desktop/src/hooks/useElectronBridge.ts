@@ -2,11 +2,17 @@ import { useMemo, useEffect } from "react";
 import type { ProgressEvent } from "../types";
 
 export function useElectronBridge(onEvent?: (e: ProgressEvent) => void) {
-  const isElectron = useMemo(() => typeof window !== "undefined" && !!window.anki, []);
+  const isElectron = useMemo(
+    () => typeof window !== "undefined" && !!window.anki,
+    []
+  );
 
   useEffect(() => {
     if (!isElectron || !window.anki?.onEvent || !onEvent) return;
-    window.anki.onEvent(onEvent);
+    const off = window.anki.onEvent(onEvent) as (() => void) | undefined;
+    return () => {
+      try { off?.(); } catch {}
+    };
   }, [isElectron, onEvent]);
 
   const chooseFile = async () => (isElectron ? window.anki!.chooseFile() : null);

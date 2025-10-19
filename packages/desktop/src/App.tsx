@@ -14,6 +14,18 @@ type StepKey = "files" | "csv" | "voice_img" | "progress";
 /** Order matters for animation direction */
 const STEP_ORDER: StepKey[] = ["files", "csv", "voice_img", "progress"];
 
+/** Common delimiter options (UI label -> actual value).
+ * "auto" means let backend auto-detect. Others are literal characters.
+ */
+const DELIMITER_OPTIONS = [
+  { value: "auto", label: "Auto-detect" },
+  { value: ",", label: "Comma (,)" },
+  { value: ";", label: "Semicolon (;)" },
+  { value: "\t", label: "Tab" },
+  { value: "|", label: "Pipe (|)" },
+  { value: ":", label: "Colon (:)" },
+] as const;
+
 /** Small, accessible info tooltip shown on hover/focus. */
 function InfoTip({ text, ariaLabel }: { text: string; ariaLabel?: string }) {
   return (
@@ -48,7 +60,7 @@ type CsvPreview = {
   ok: boolean;
   header: string[];
   rows: string[][];
-  delimiter: string;
+  delimiter: string; // delimiter that backend actually used/detected
   error?: string;
 };
 
@@ -63,20 +75,39 @@ export default function App() {
     voice_img: null,
     progress: null,
   });
-  const [navIndicator, setNavIndicator] = useState<{ top: number; height: number }>({ top: 0, height: 0 });
+  const [navIndicator, setNavIndicator] = useState<{
+    top: number;
+    height: number;
+  }>({ top: 0, height: 0 });
 
   const setStep = useCallback((next: StepKey) => {
     _setStep(next);
   }, []);
 
+  const [csv, setCsv] = useState<string | null>(null);
+  const [out, setOut] = useState<string | null>(null);
+  const [opts, setOpts] = useState<any>({
+    ...defaultOpts,
+    // new: csvDelimiter (persist in opts so it flows to run())
+    csvDelimiter: (defaultOpts as any)?.csvDelimiter ?? "auto",
+  });
+
+  // Block progressing past Step 1 until both CSV and output are chosen
+  const canProceed = !!csv && !!out;
+
   const goTo = useCallback(
     (next: StepKey) => {
+      // Only allow navigating away from "files" when both CSV and output are selected.
+      if (next !== "files" && !canProceed) {
+        alert("Pick a CSV and an output .apkg location first.");
+        return;
+      }
       const curIdx = STEP_ORDER.indexOf(step);
       const nextIdx = STEP_ORDER.indexOf(next);
       setDirection(nextIdx >= curIdx ? 1 : -1);
       setStep(next);
     },
-    [step, setStep]
+    [step, setStep, canProceed]
   );
 
   useEffect(() => {
@@ -103,10 +134,6 @@ export default function App() {
     };
   }, [step]);
 
-  const [csv, setCsv] = useState<string | null>(null);
-  const [out, setOut] = useState<string | null>(null);
-  const [opts, setOpts] = useState<any>(defaultOpts);
-
   const [running, setRunning] = useState(false);
   const [cancelRequested, setCancelRequested] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -122,27 +149,42 @@ export default function App() {
   } | null>(null);
   const [outputs, setOutputs] = useState<string[]>([]);
 
-  const onEvent = useCallback((e: ProgressEvent) => {
-    if (e.type === "log") {
-      setLog((l) => l + `\n${e.level.toUpperCase()}: ${e.message}`);
-      if (e.level === "error") setHasError(true);
-    }
-    if (e.type === "progress") setProgress(e);
-    if (e.type === "preflight") setLog((l) => l + `\n• ${e.message}`);
-    if (e.type === "pack:start")
-      setLog((l) => l + `\nPacking ${e.total} notes into ${e.parts} file(s)…`);
-    if (e.type === "pack:part") setLog((l) => l + `\n→ ${e.filename}`);
-    if (e.type === "pack:done") {
-      setOutputs(e.outputs);
-      setLog((l) => l + `\nDone in ${(e.durationMs / 1000).toFixed(1)}s`);
-    }
-    if (e.type === "done") {
-      setRunning(false);
-      setCancelRequested(false);
-      setDoneCode(e.code);
-      setStep("progress");
-    }
-  }, [setStep]);
+  const onEvent = useCallback(
+    (e: ProgressEvent) => {
+      if (e.type === "log") {
+        setLog((l) => l + `\n${e.level.toUpperCase()}: ${e.message}`);
+        if (e.level === "error") setHasError(true);
+      }
+      if (e.type === "progress") setProgress(e);
+      if (e.type === "preflight") setLog((l) => l + `\n• ${e.message}`);
+      if (e.type === "pack:start")
+        setLog(
+          (l) => l + `\nPacking ${e.total} notes into ${e.parts} file(s)…`
+        );
+      if (e.type === "pack:part") setLog((l) => l + `\n→ ${e.filename}`);
+      if (e.type === "pack:done") {
+        setOutputs(e.outputs);
+        setLog((l) => l + `\nDone in ${(e.durationMs / 1000).toFixed(1)}s`);
+      }
+      if (e.type === "done") {
+        setRunning(false);
+        setCancelRequested(false);
+        setDoneCode(e.code);
+
+        // 🔴 If we "succeeded" but nothing was written, treat it as an error.
+        // This avoids false "success" when the core exits 0 with 0 notes.
+        setHasError((prev) => {
+          if (prev) return prev;
+          const noOutputs = !outputs || outputs.length === 0;
+          const looksSuccess = e.code === 0;
+          return looksSuccess && noOutputs ? true : false;
+        });
+
+        setStep("progress");
+      }
+    },
+    [setStep, outputs]
+  );
 
   const { isElectron, chooseFile, chooseOut, run, cancel } =
     useElectronBridge(onEvent);
@@ -198,6 +240,12 @@ export default function App() {
     setProgress(null);
     setStep("progress");
 
+    // Map "auto" to undefined to let backend auto-detect
+    const delimiterToUse =
+      opts.csvDelimiter && opts.csvDelimiter !== "auto"
+        ? opts.csvDelimiter
+        : undefined;
+
     run({
       input: csv,
       apkgOut: outPath,
@@ -225,6 +273,8 @@ export default function App() {
       genStyle: opts.genStyle,
       // Default to TRUE when undefined, so the checkbox is effectively “on” by default.
       useImageCache: opts.useImageCache !== false,
+      // NEW: pass delimiter to backend (undefined = auto-detect)
+      csvDelimiter: delimiterToUse,
     });
   };
 
@@ -291,6 +341,7 @@ export default function App() {
           deckName={opts.deckName}
           colFront={opts.colFront}
           colBack={opts.colBack}
+          csvDelimiter={opts.csvDelimiter}
           onChange={(patch) => setOpts({ ...opts, ...patch })}
           onBack={() => goTo("files")}
           onNext={() => goTo("voice_img")}
@@ -357,14 +408,25 @@ export default function App() {
             <nav className="flex flex-col gap-2 relative">
               {navItems.map((s) => {
                 const active = step === (s.id as StepKey);
+                const disabled = s.id !== "files" && !canProceed;
+
                 return (
                   <button
                     key={s.id}
                     ref={(el) => (navRefs.current[s.id as StepKey] = el)}
-                    onClick={() => goTo(s.id as StepKey)}
+                    onClick={() => {
+                      if (disabled) return;
+                      goTo(s.id as StepKey);
+                    }}
+                    disabled={disabled}
+                    title={
+                      disabled
+                        ? "Pick a CSV and output location first"
+                        : s.label
+                    }
                     className={`nav-btn ${
                       active ? "nav-btn--active" : "nav-btn--idle"
-                    }`}
+                    } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     <span className="material-symbols-outlined">{s.icon}</span>
                     <span className="text-sm font-medium">{s.label}</span>
@@ -554,6 +616,7 @@ function FilesStep({
           type="button"
           className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={!csv || !out}
+          title={!csv || !out ? "Pick a CSV and output first" : "Next"}
           onClick={onNext}
         >
           Next
@@ -568,6 +631,7 @@ function CsvStep({
   deckName,
   colFront,
   colBack,
+  csvDelimiter,
   onChange,
   onBack,
   onNext,
@@ -576,6 +640,7 @@ function CsvStep({
   deckName: string;
   colFront: string;
   colBack: string;
+  csvDelimiter: string; // "auto" or actual delimiter char
   onChange: (patch: Partial<any>) => void;
   onBack: () => void;
   onNext: () => void;
@@ -590,17 +655,24 @@ function CsvStep({
     setLoadErr(null);
     setPreview(null);
     try {
+      // Map "auto" to undefined so backend will auto-detect.
+      const delimiterToUse =
+        csvDelimiter && csvDelimiter !== "auto" ? csvDelimiter : undefined;
+
       const res: CsvPreview = (await (window as any).anki?.previewCsv?.(
         csvPath,
         {
           maxRows: 8,
           maxBytes: 2 * 1024 * 1024,
+          delimiter: delimiterToUse,
         }
       )) || { ok: false, header: [], rows: [], delimiter: "," };
       if (!res.ok) {
         setLoadErr(res.error || "Failed to read CSV.");
       }
       setPreview(res);
+
+      // Auto-guess mappings if not set yet
       if (!colFront && res?.header?.length) {
         const guessFront =
           res.header.find((h) => /front|question|source/i.test(h)) ||
@@ -619,7 +691,7 @@ function CsvStep({
     } finally {
       setLoading(false);
     }
-  }, [csvPath, colFront, colBack, onChange]);
+  }, [csvPath, colFront, colBack, onChange, csvDelimiter]);
 
   useEffect(() => {
     if (csvPath) refreshPreview();
@@ -635,11 +707,12 @@ function CsvStep({
           Step 2: Configure Your Deck
         </h1>
         <p className="text-[var(--muted)] mt-1">
-          Map your CSV columns and verify the first few rows below.
+          Map your CSV columns, choose a delimiter if needed, and verify the
+          first few rows below.
         </p>
       </div>
 
-      {/* Mapping */}
+      {/* Mapping + Delimiter */}
       <div className="grid gap-8">
         <div className="max-w-xl">
           <label className="flex items-center text-base font-medium mb-2">
@@ -657,7 +730,7 @@ function CsvStep({
           />
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-3xl">
+        <div className="grid md:grid-cols-3 gap-8 max-w-5xl">
           <div>
             <label className="flex items-center text-base font-medium mb-2">
               Front column
@@ -709,6 +782,41 @@ function CsvStep({
               />
             )}
           </div>
+
+          <div>
+            <label className="flex items-center text-base font-medium mb-2">
+              Delimiter
+              <InfoTip
+                text="If auto-detect fails, pick the delimiter your CSV uses (e.g., semicolon for many EU exports, tab for TSV)."
+                ariaLabel="Delimiter help"
+              />
+            </label>
+            <Dropdown
+              value={csvDelimiter ?? "auto"}
+              onChange={(v) => {
+                onChange({ csvDelimiter: v });
+                // Re-read preview whenever delimiter changes
+                // (guard with setTimeout to ensure state is flushed)
+                setTimeout(() => {
+                  if (csvPath) {
+                    (async () => {
+                      try {
+                        await (async () => {})(); // noop microtask
+                        // trigger reload
+                      } finally {
+                        // call refresh after change
+                      }
+                    })();
+                    // Direct call:
+                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                    refreshPreview();
+                  }
+                }, 0);
+              }}
+              options={DELIMITER_OPTIONS as any}
+              placeholder="Auto-detect"
+            />
+          </div>
         </div>
       </div>
 
@@ -719,7 +827,7 @@ function CsvStep({
             <h2 className="text-2xl font-bold">CSV Preview</h2>
             {preview?.delimiter && (
               <span className="text-xs text-[var(--muted)]">
-                Detected delimiter:{" "}
+                Using delimiter:{" "}
                 <code>{JSON.stringify(preview.delimiter)}</code>
               </span>
             )}
@@ -987,9 +1095,9 @@ function VoiceImageStep({
           Back
         </button>
         <div className="flex gap-3">
-          <button type="button" className="btn btn-muted" onClick={onNext}>
+          {/* <button type="button" className="btn btn-muted" onClick={onNext}>
             Next
-          </button>
+          </button> */}
           <button
             type="button"
             className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1043,8 +1151,7 @@ function ProgressStep({
     (progress?.queued ?? 0);
   const ratio =
     total > 0 ? Math.min(1, Math.max(0, (progress?.done ?? 0) / total)) : 0;
-  const isSuccess =
-    doneCode === 0 || (!!outputs.length && !running && !hasError);
+  const isSuccess = !!outputs.length && !running && !hasError;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -1110,20 +1217,30 @@ function ProgressStep({
       {isSuccess && (
         <div className="grid place-items-center text-center card p-10">
           <span
-            className="material-symbols-outlined text-green-500"
+            className="material-symbols-outlined text-green-500 success-icon"
             style={{ fontSize: 96, fontVariationSettings: "'FILL' 1" }}
+            aria-hidden="true"
           >
             check_circle
           </span>
-          <h2 className="mt-4 text-4xl font-black">
+          <h2
+            className="mt-4 text-4xl font-black fade-up"
+            style={{ animationDelay: ".08s" }}
+          >
             File Generated Successfully
           </h2>
-          <p className="text-[var(--muted)] mt-1">
+          <p
+            className="text-[var(--muted)] mt-1 fade-up"
+            style={{ animationDelay: ".14s" }}
+          >
             Your Anki deck has been created and is ready.
           </p>
 
           {outputs[0] && (
-            <div className="w-full max-w-xl mt-6 text-left">
+            <div
+              className="w-full max-w-xl mt-6 text-left fade-up"
+              style={{ animationDelay: ".18s" }}
+            >
               <label className="block text-base font-medium mb-2">
                 Output file path
               </label>
@@ -1131,7 +1248,10 @@ function ProgressStep({
             </div>
           )}
 
-          <div className="flex gap-3 mt-6 flex-wrap justify-center">
+          <div
+            className="flex gap-3 mt-6 flex-wrap justify-center fade-up"
+            style={{ animationDelay: ".22s" }}
+          >
             {outputs[0] && (
               <>
                 <button

@@ -129,3 +129,20 @@ label { line-height: 1; }
 }
 .slide-in-right { animation: slideInRight .28s ease both; }
 .slide-in-left  { animation: slideInLeft  .28s ease both; }
+
+/* ---- Success pop-in animation ---- */
+@keyframes successPop {
+  0%   { transform: scale(0.6) rotate(-8deg); opacity: 0; }
+  60%  { transform: scale(1.12) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.success-icon {
+  animation: successPop 1s cubic-bezier(.22,.65,.32,1) both;
+}
+
+/* (Optional) gentle text reveal used below */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp .28s ease both; }
