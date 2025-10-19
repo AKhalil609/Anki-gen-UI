@@ -9,7 +9,10 @@ import { VOICES } from "./data/voices";
 import VoiceDropdown from "./components/VoiceDropdown";
 import Dropdown from "./components/Dropdown"; // styled dropdowns (no search)
 
-type StepKey = "files" | "csv" | "voice_img" | "review" | "progress";
+type StepKey = "files" | "csv" | "voice_img" | "progress";
+
+/** Order matters for animation direction */
+const STEP_ORDER: StepKey[] = ["files", "csv", "voice_img", "progress"];
 
 /** Small, accessible info tooltip shown on hover/focus. */
 function InfoTip({ text, ariaLabel }: { text: string; ariaLabel?: string }) {
@@ -50,7 +53,55 @@ type CsvPreview = {
 };
 
 export default function App() {
-  const [step, setStep] = useState<StepKey>("files");
+  const [step, _setStep] = useState<StepKey>("files");
+  const [direction, setDirection] = useState<1 | -1>(1); // 1: forward, -1: back
+
+  // Animated nav indicator measurements
+  const navRefs = useRef<Record<StepKey, HTMLButtonElement | null>>({
+    files: null,
+    csv: null,
+    voice_img: null,
+    progress: null,
+  });
+  const [navIndicator, setNavIndicator] = useState<{ top: number; height: number }>({ top: 0, height: 0 });
+
+  const setStep = useCallback((next: StepKey) => {
+    _setStep(next);
+  }, []);
+
+  const goTo = useCallback(
+    (next: StepKey) => {
+      const curIdx = STEP_ORDER.indexOf(step);
+      const nextIdx = STEP_ORDER.indexOf(next);
+      setDirection(nextIdx >= curIdx ? 1 : -1);
+      setStep(next);
+    },
+    [step, setStep]
+  );
+
+  useEffect(() => {
+    function measure() {
+      const el = navRefs.current[step];
+      if (!el) return;
+      const parent = el.parentElement?.parentElement; // nav container
+      const parentRect = parent?.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      if (!parentRect) return;
+      setNavIndicator({
+        top: rect.top - parentRect.top,
+        height: rect.height,
+      });
+    }
+    measure();
+    const r = new ResizeObserver(measure);
+    const root = document.getElementById("root");
+    if (root) r.observe(root);
+    window.addEventListener("resize", measure);
+    return () => {
+      r.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [step]);
 
   const [csv, setCsv] = useState<string | null>(null);
   const [out, setOut] = useState<string | null>(null);
@@ -91,7 +142,7 @@ export default function App() {
       setDoneCode(e.code);
       setStep("progress");
     }
-  }, []);
+  }, [setStep]);
 
   const { isElectron, chooseFile, chooseOut, run, cancel } =
     useElectronBridge(onEvent);
@@ -211,6 +262,74 @@ export default function App() {
   const handleOpenDocs = () =>
     window.open("https://github.com/AKhalil609/Anki-gen-UI", "_blank");
 
+  const navItems = [
+    { id: "files", label: "File Selection", icon: "upload_file" },
+    { id: "csv", label: "Map Columns", icon: "splitscreen" },
+    { id: "voice_img", label: "Voice & Images", icon: "settings" },
+    { id: "progress", label: "Progress & Logs", icon: "sync" },
+  ] as const;
+
+  // Render current step (slides in on change)
+  function renderStepContent() {
+    if (step === "files")
+      return (
+        <FilesStep
+          key="files"
+          csv={csv}
+          out={out}
+          setCsv={setCsv}
+          onPickCsv={handlePickCsv}
+          onPickOut={handlePickOut}
+          onNext={() => goTo("csv")}
+        />
+      );
+    if (step === "csv")
+      return (
+        <CsvStep
+          key="csv"
+          csvPath={csv}
+          deckName={opts.deckName}
+          colFront={opts.colFront}
+          colBack={opts.colBack}
+          onChange={(patch) => setOpts({ ...opts, ...patch })}
+          onBack={() => goTo("files")}
+          onNext={() => goTo("voice_img")}
+        />
+      );
+    if (step === "voice_img")
+      return (
+        <VoiceImageStep
+          key="voice_img"
+          opts={opts}
+          voices={VOICES.map((v) => v.id)}
+          onChange={(patch) => setOpts({ ...opts, ...patch })}
+          onBack={() => goTo("csv")}
+          onNext={() => goTo("progress")}
+          onBuild={handleRun}
+          canRun={canRun}
+          disabledReason={disabledReason}
+        />
+      );
+    return (
+      <ProgressStep
+        key="progress"
+        running={running}
+        progress={progress}
+        hasError={hasError}
+        cancelRequested={cancelRequested}
+        doneCode={doneCode}
+        outputs={outputs}
+        log={log}
+        onCancel={handleCancel}
+        onReset={handleReset}
+        onCopy={(t) => navigator.clipboard.writeText(t).catch(() => {})}
+        onReveal={(p) => (window as any).anki?.openPath?.(p)}
+      />
+    );
+  }
+
+  const stepAnimClass = direction === 1 ? "slide-in-right" : "slide-in-left";
+
   return (
     <div className="h-full flex">
       {/* Sidebar */}
@@ -226,28 +345,34 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="flex flex-col gap-2">
-            {[
-              { id: "files", label: "File Selection", icon: "upload_file" },
-              { id: "csv", label: "Map Columns", icon: "splitscreen" },
-              { id: "voice_img", label: "Voice & Images", icon: "settings" },
-              { id: "progress", label: "Progress & Logs", icon: "sync" },
-            ].map((s) => {
-              const active = step === (s.id as StepKey);
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setStep(s.id as StepKey)}
-                  className={`nav-btn ${
-                    active ? "nav-btn--active" : "nav-btn--idle"
-                  }`}
-                >
-                  <span className="material-symbols-outlined">{s.icon}</span>
-                  <span className="text-sm font-medium">{s.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+          <div className="relative">
+            {/* floating, animated indicator */}
+            <div
+              className="nav-indicator"
+              style={{
+                transform: `translateY(${navIndicator.top}px)`,
+                height: `${navIndicator.height}px`,
+              }}
+            />
+            <nav className="flex flex-col gap-2 relative">
+              {navItems.map((s) => {
+                const active = step === (s.id as StepKey);
+                return (
+                  <button
+                    key={s.id}
+                    ref={(el) => (navRefs.current[s.id as StepKey] = el)}
+                    onClick={() => goTo(s.id as StepKey)}
+                    className={`nav-btn ${
+                      active ? "nav-btn--active" : "nav-btn--idle"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined">{s.icon}</span>
+                    <span className="text-sm font-medium">{s.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
         </div>
 
         {/* Sidebar footer with the two buttons */}
@@ -287,57 +412,9 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 px-10 py-9 overflow-auto">
-        {step === "files" && (
-          <FilesStep
-            csv={csv}
-            out={out}
-            setCsv={setCsv}
-            onPickCsv={handlePickCsv}
-            onPickOut={handlePickOut}
-            onNext={() => setStep("csv")}
-          />
-        )}
-
-        {step === "csv" && (
-          <CsvStep
-            csvPath={csv}
-            deckName={opts.deckName}
-            colFront={opts.colFront}
-            colBack={opts.colBack}
-            onChange={(patch) => setOpts({ ...opts, ...patch })}
-            onBack={() => setStep("files")}
-            onNext={() => setStep("voice_img")}
-          />
-        )}
-
-        {step === "voice_img" && (
-          <VoiceImageStep
-            opts={opts}
-            voices={VOICES.map((v) => v.id)}
-            onChange={(patch) => setOpts({ ...opts, ...patch })}
-            onBack={() => setStep("csv")}
-            onNext={() => setStep("progress")}
-            onBuild={handleRun}
-            canRun={canRun}
-            disabledReason={disabledReason}
-          />
-        )}
-
-        {step === "progress" && (
-          <ProgressStep
-            running={running}
-            progress={progress}
-            hasError={hasError}
-            cancelRequested={cancelRequested}
-            doneCode={doneCode}
-            outputs={outputs}
-            log={log}
-            onCancel={handleCancel}
-            onReset={handleReset}
-            onCopy={(t) => navigator.clipboard.writeText(t).catch(() => {})}
-            onReveal={(p) => (window as any).anki?.openPath?.(p)}
-          />
-        )}
+        <div key={step} className={`step-anim-wrapper ${stepAnimClass}`}>
+          {renderStepContent()}
+        </div>
       </main>
     </div>
   );
@@ -865,7 +942,7 @@ function VoiceImageStep({
                 <p className="text-[var(--muted)] text-xs text-yellow-300 mb-1 mt-1">
                   Uses an open-source model (slow and less accurate); if image
                   generation fails, it fetches from Google—best results with
-                  English input.{" "}
+                  English input.
                 </p>
                 <Dropdown
                   value={opts.genStyle ?? ""}
@@ -883,7 +960,7 @@ function VoiceImageStep({
             </div>
           )}
 
-          {/* --- NEW: Use cached images toggle (checked by default) --- */}
+          {/* --- Use cached images toggle (checked by default) --- */}
           <div className="mt-6 flex items-start justify-between gap-4 rounded-lg bg-white/5 p-4">
             <div className="grid">
               <div className="font-semibold">Use cached images</div>

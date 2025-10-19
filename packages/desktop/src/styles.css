@@ -28,9 +28,7 @@ body {
     Arial, "Noto Sans", "Liberation Sans", "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-label {
-  line-height: 1;
-}
+label { line-height: 1; }
 
 /* ---------- Helpers ---------- */
 .input {
@@ -43,14 +41,12 @@ label {
 .btn {
   @apply inline-flex items-center justify-center rounded-lg px-5 h-12 font-bold
          cursor-pointer select-none transition;
+  transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, color .18s ease;
 }
-.btn-primary {
-  background: var(--primary); color: white;
-}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--primary); color: white; }
 .btn-primary:hover { filter: brightness(1.05); }
-.btn-muted {
-  @apply bg-slate-200/60 dark:bg-slate-700/60 text-slate-900 dark:text-white;
-}
+.btn-muted { @apply bg-slate-200/60 dark:bg-slate-700/60 text-slate-900 dark:text-white; }
 .btn-muted:hover { @apply bg-slate-200 dark:bg-slate-700; }
 
 .card { @apply rounded-xl; background: var(--card); }
@@ -62,6 +58,7 @@ label {
          bg-transparent;
   border-color: color-mix(in oklab, #fff 0%, #3b4754 40%);
   cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, outline-color .2s ease;
 }
 .dropzone:hover { @apply bg-white/5; }
 .dropzone--active {
@@ -74,13 +71,26 @@ label {
 
 /* Sidebar buttons */
 .nav-btn {
-  @apply flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left transition cursor-pointer;
+  @apply flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left cursor-pointer;
+  transition: background-color .24s ease, color .24s ease, transform .18s ease;
 }
 .nav-btn--active {
   background: color-mix(in oklab, var(--primary) 22%, transparent);
   color: white;
+  transform: translateX(0px) scale(1.01);
 }
 .nav-btn--idle { @apply text-[color:var(--muted)] hover:bg-white/5; }
+
+/* Floating nav indicator (animated) */
+.nav-indicator {
+  position: absolute;
+  left: -6px;
+  width: 4px;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: transform .28s cubic-bezier(.22,.65,.32,1), height .28s ease;
+  will-change: transform, height;
+}
 
 /* Material Symbols defaults */
 .material-symbols-outlined {
@@ -89,24 +99,33 @@ label {
     'Wght' 400,
     'GRAD' 0,
     'opsz' 24;
+  transition: color .24s ease, transform .18s ease, opacity .2s ease;
 }
 
 /* ---------- Lightweight table styling for CSV preview ---------- */
-.table {
-  border-collapse: separate;
-  border-spacing: 0;
-}
+.table { border-collapse: separate; border-spacing: 0; }
 .table-th {
   @apply sticky top-0 z-10 text-left text-xs font-bold uppercase tracking-wide;
   background: color-mix(in oklab, var(--card) 92%, #000 8%);
   padding: 10px 12px;
   border-bottom: 1px solid color-mix(in oklab, #ffffff 0%, #3b4754 35%);
 }
-.table-tr:nth-child(even) td {
-  background: color-mix(in oklab, var(--card) 96%, #000 4%);
-}
+.table-tr:nth-child(even) td { background: color-mix(in oklab, var(--card) 96%, #000 4%); }
 .table-td {
   padding: 10px 12px;
   border-bottom: 1px solid color-mix(in oklab, #ffffff 0%, #3b4754 30%);
   vertical-align: top;
 }
+
+/* ---------- Step slide-in animations ---------- */
+.step-anim-wrapper { will-change: transform, opacity; }
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(22px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-22px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.slide-in-right { animation: slideInRight .28s ease both; }
+.slide-in-left  { animation: slideInLeft  .28s ease both; }
