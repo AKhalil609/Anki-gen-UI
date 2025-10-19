@@ -3,69 +3,80 @@ import { VOICES } from "../data/voices";
 import { formatVoiceLabel } from "../utils/voice";
 import type { Voice } from "../types";
 
-// Material Web components
-import "@material/web/textfield/filled-text-field";
-import "@material/web/select/filled-select";
-import "@material/web/select/select-option";
-
-type Props = {
+/**
+ * Searchable voice selector.
+ * - Top text input filters by id or language label.
+ * - Bottom <select> shows filtered results (scrollable).
+ */
+export default function VoiceSelect({
+  value,
+  onChange,
+  locale = navigator.language || "en",
+  maxHeight = 240,
+}: {
   value: string;
-  onChange: (v: string) => void;
-};
-
-export default function VoiceSelect({ value, onChange }: Props) {
+  onChange: (id: string) => void;
+  locale?: string;
+  maxHeight?: number;
+}) {
   const [query, setQuery] = useState("");
 
-  // Include custom current value if it isn't in the list
+  // Ensure the current value stays selectable even if it's not in VOICES
   const voicesWithCustom: Voice[] = useMemo(() => {
-    const found = VOICES.find((v: Voice) => v.id === value);
-    return found ? VOICES : [{ id: value, gender: "Neutral" }, ...VOICES];
+    const found = VOICES.find((v) => v.id === value);
+    return found ? VOICES : [{ id: value, gender: "Neutral" as const }, ...VOICES];
   }, [value]);
 
-  // Filter by id or formatted label
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return voicesWithCustom;
-    return voicesWithCustom.filter(
-      (v) =>
-        v.id.toLowerCase().includes(q) ||
-        formatVoiceLabel(v).toLowerCase().includes(q)
-    );
-  }, [query, voicesWithCustom]);
+    return voicesWithCustom.filter((v) => {
+      const id = v.id.toLowerCase();
+      const label = formatVoiceLabel(v, locale).toLowerCase();
+      return id.includes(q) || label.includes(q);
+    });
+  }, [query, voicesWithCustom, locale]);
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {/* Search input */}
-      <md-filled-text-field
-        label="Search voice…"
+    <div className="grid gap-2">
+      <input
+        type="text"
+        className="input h-12"
+        placeholder="Search voice… (e.g. de-DE, Katja, female)"
         value={query}
-        onInput={(e: React.FormEvent<HTMLInputElement>) => setQuery((e.target as HTMLInputElement).value)}
-        style={{ width: "100%" }}
-      ></md-filled-text-field>
+        onChange={(e) => setQuery(e.target.value)}
+      />
 
-      {/* Material Select */}
-      <md-filled-select
-        label="Voice"
-        // md-select sets .value on host; read it from the event target
-        value={value}
-        onInput={(e: React.FormEvent<HTMLSelectElement>) => {
-          const v = (e.target as unknown as { value?: string }).value ?? "";
-          onChange(v);
-        }}
-        style={{ width: "100%" }}
-      >
-        {filtered.map((v) => {
-          const label =
-            v.id === value && !VOICES.find((x) => x.id === v.id)
-              ? `Custom (${v.id})`
-              : formatVoiceLabel(v);
-          return (
-            <md-select-option key={v.id} value={v.id}>
-              <div slot="headline">{label}</div>
-            </md-select-option>
-          );
-        })}
-      </md-filled-select>
+      <div className="relative">
+        <select
+          className="input h-14"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          size={Math.min(8, Math.max(4, filtered.length))} // desktop: nice compact list
+          style={{
+            // turn the select into a scrollable list without making it huge
+            height: "auto",
+            maxHeight,
+            overflowY: "auto",
+          }}
+        >
+          {filtered.map((v) => {
+            const label =
+              v.id === value && !VOICES.find((x) => x.id === v.id)
+                ? `Custom (${v.id})`
+                : formatVoiceLabel(v, locale);
+            return (
+              <option key={v.id} value={v.id} title={v.id}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
+        {/* Small helper text */}
+        <div className="mt-1 text-xs text-[var(--muted)]">
+          {filtered.length.toLocaleString()} voice{filtered.length === 1 ? "" : "s"}
+        </div>
+      </div>
     </div>
   );
 }

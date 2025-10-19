@@ -1,18 +1,57 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultOpts } from "./constants/defaults";
 import { useElectronBridge } from "./hooks/useElectronBridge";
 import { pathLike } from "./utils/path";
 import type { ProgressEvent } from "./types";
+import "./styles.css";
 import ankiLogo from "./assets/anki_logo.png";
+import { VOICES } from "./data/voices";
+import VoiceDropdown from "./components/VoiceDropdown";
+import Dropdown from "./components/Dropdown"; // styled dropdowns (no search)
 
-import FilePickers from "./components/FilePickers";
-import GeneralSettings from "./components/GeneralSettings";
-import ImageSettings from "./components/ImageSettings";
-import ActionsPanel from "./components/ActionsPanel";
-import LogPanel from "./components/LogPanel";
-import OutputsPanel from "./components/OutputsPanel";
+type StepKey = "files" | "csv" | "voice_img" | "review" | "progress";
+
+/** Small, accessible info tooltip shown on hover/focus. */
+function InfoTip({ text, ariaLabel }: { text: string; ariaLabel?: string }) {
+  return (
+    <span className="relative group inline-flex items-center align-middle">
+      <span
+        tabIndex={0}
+        className="material-symbols-outlined ml-1 inline-flex size-5 items-center justify-center rounded-full text-[var(--muted)] hover:text-white cursor-help select-none outline-none"
+        aria-label={ariaLabel || "Info"}
+        title={text}
+      >
+        info
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-[-6px] z-20 hidden w-max -translate-x-1/2 -translate-y-full rounded-md px-3 py-1.5 text-xs font-medium leading-tight text-white shadow-lg group-hover:block group-focus-within:block"
+        style={{ background: "rgba(17, 24, 39, 0.95)" }}
+      >
+        {text}
+        <span
+          className="absolute left-1/2 top-full block h-2 w-2 -translate-x-1/2"
+          style={{
+            background: "rgba(17, 24, 39, 0.95)",
+            clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)",
+          }}
+        />
+      </span>
+    </span>
+  );
+}
+
+type CsvPreview = {
+  ok: boolean;
+  header: string[];
+  rows: string[][];
+  delimiter: string;
+  error?: string;
+};
 
 export default function App() {
+  const [step, setStep] = useState<StepKey>("files");
+
   const [csv, setCsv] = useState<string | null>(null);
   const [out, setOut] = useState<string | null>(null);
   const [opts, setOpts] = useState<any>(defaultOpts);
@@ -20,10 +59,15 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [cancelRequested, setCancelRequested] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [doneCode, setDoneCode] = useState<number | null>(null);
 
   const [log, setLog] = useState<string>("");
   const [progress, setProgress] = useState<{
-    done: number; failed: number; queued: number; running: number; retries: number;
+    done: number;
+    failed: number;
+    queued: number;
+    running: number;
+    retries: number;
   } | null>(null);
   const [outputs, setOutputs] = useState<string[]>([]);
 
@@ -44,46 +88,64 @@ export default function App() {
     if (e.type === "done") {
       setRunning(false);
       setCancelRequested(false);
+      setDoneCode(e.code);
+      setStep("progress");
     }
   }, []);
 
-  const { isElectron, chooseFile, chooseOut, run, cancel } = useElectronBridge(onEvent);
+  const { isElectron, chooseFile, chooseOut, run, cancel } =
+    useElectronBridge(onEvent);
 
-  // Enable Build with CSV selected (Output can be requested on click)
-  const canRun = useMemo(() => !!csv && isElectron && !running, [csv, isElectron, running]);
-
-  const disabledReason =
-    !isElectron ? "Desktop-only"
-    : running ? "Running…"
-    : !csv ? "Pick a CSV first"
+  const canRun = useMemo(
+    () => !!csv && !!out && isElectron && !running,
+    [csv, out, isElectron, running]
+  );
+  const disabledReason = !isElectron
+    ? "Desktop-only"
+    : running
+    ? "Running…"
+    : !csv
+    ? "Pick a CSV first"
+    : !out
+    ? "Pick an output file"
     : null;
+
+  // ---------- actions ----------
+  const handlePickCsv = async () => {
+    if (!isElectron) return;
+    const r = await chooseFile();
+    if (r) setCsv(r);
+  };
+  const handlePickOut = async () => {
+    if (!isElectron) return;
+    const r = await chooseOut();
+    if (r) setOut(r);
+  };
 
   const handleRun = async () => {
     if (!csv) return;
     if (!isElectron || !run) {
-      alert("This action only works in the desktop app. Please run via Electron.");
+      alert(
+        "This action only works in the desktop app. Please run via Electron."
+      );
       return;
     }
-
-    // Prompt for output path if missing
     let outPath = out;
     if (!outPath) {
-      try {
-        const chosen = await chooseOut();
-        if (!chosen) return; // user canceled the save dialog
-        outPath = chosen;
-        setOut(chosen);
-      } catch {
-        return;
-      }
+      const chosen = await chooseOut();
+      if (!chosen) return;
+      outPath = chosen;
+      setOut(chosen);
     }
 
     setRunning(true);
     setCancelRequested(false);
     setHasError(false);
+    setDoneCode(null);
     setLog("");
     setOutputs([]);
     setProgress(null);
+    setStep("progress");
 
     run({
       input: csv,
@@ -98,7 +160,6 @@ export default function App() {
       colBack: opts.colBack,
       ttsFrom: opts.ttsFrom ?? "back",
       imagesFrom: opts.imagesFrom ?? "back",
-
       sqlMemoryMB: Number(opts.sqlMemoryMB) || 512,
       useDownsample: !!opts.useDownsample,
       imgMaxWidth: Number(opts.imgMaxWidth) || 480,
@@ -108,148 +169,936 @@ export default function App() {
       imgStripMeta: !!opts.imgStripMeta,
       imgNoEnlarge: !!opts.imgNoEnlarge,
       batchSize: Number(opts.batchSize) || 1000000,
-
       imageMode: opts.imageMode,
       genProvider: opts.genProvider,
       genStyle: opts.genStyle,
-      useImageCache: !!opts.useImageCache,
+      // Default to TRUE when undefined, so the checkbox is effectively “on” by default.
+      useImageCache: opts.useImageCache !== false,
     });
   };
 
   const handleCancel = () => {
     if (!isElectron) return;
     setCancelRequested(true);
-    try { cancel?.(); } catch {}
+    try {
+      cancel?.();
+    } catch {}
   };
-
   const handleReset = () => {
     setRunning(false);
     setCancelRequested(false);
     setHasError(false);
     setProgress(null);
     setOutputs([]);
+    setLog("");
+    setDoneCode(null);
+    setStep("files");
   };
 
+  // ---- sidebar bottom actions (new) ----
   const openMediaDisabled = !isElectron || !out;
   const handleOpenMedia = useCallback(async () => {
-    if (!openMediaDisabled) {
-      try {
-        const mediaDir = pathLike(out!, "media");
-        const res = await (window as any).anki?.openPath?.(mediaDir);
-        if (!res?.ok) alert("Could not open media folder. It may not exist yet.");
-      } catch { alert("Could not open media folder."); }
+    if (openMediaDisabled) return;
+    try {
+      const mediaDir = pathLike(out!, "media");
+      const res = await (window as any).anki?.openPath?.(mediaDir);
+      if (!res?.ok) alert("Could not open media folder. It may not exist yet.");
+    } catch {
+      alert("Could not open media folder.");
     }
   }, [openMediaDisabled, out]);
 
+  const handleOpenDocs = () =>
+    window.open("https://github.com/AKhalil609/Anki-gen-UI", "_blank");
+
   return (
-    <div className="min-h-screen bg-base-100">
-      {/* Top bar */}
-      <div className="app-navbar">
-        <div className="container-page app-navbar__row">
-          <img src={ankiLogo} alt="Anki One Logo" style={{ width: 32, height: 32, objectFit: "contain" }} />
-          <div>
-            <div className="app-title">Anki One</div>
-            <div className="app-subtitle">CSV → TTS + Images → .apkg</div>
+    <div className="h-full flex">
+      {/* Sidebar */}
+      <aside className="w-72 px-6 py-7 border-r border-white/5 bg-[var(--bg)] flex flex-col">
+        <div>
+          <div className="flex items-center gap-3 mb-8">
+            <img src={ankiLogo} alt="" className="w-9 h-9 rounded-lg" />
+            <div>
+              <div className="text-base font-semibold leading-tight">
+                CSV to Anki
+              </div>
+              <div className="text-sm text-[var(--muted)]">Converter</div>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="icon-btn"
-              title={openMediaDisabled ? "Pick an output path in the Electron app first" : "Open media folder"}
-              aria-disabled={openMediaDisabled}
-              onClick={handleOpenMedia}
-            >
-              <span className="material-symbols-rounded">folder_open</span>
+
+          <nav className="flex flex-col gap-2">
+            {[
+              { id: "files", label: "File Selection", icon: "upload_file" },
+              { id: "csv", label: "Map Columns", icon: "splitscreen" },
+              { id: "voice_img", label: "Voice & Images", icon: "settings" },
+              { id: "progress", label: "Progress & Logs", icon: "sync" },
+            ].map((s) => {
+              const active = step === (s.id as StepKey);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStep(s.id as StepKey)}
+                  className={`nav-btn ${
+                    active ? "nav-btn--active" : "nav-btn--idle"
+                  }`}
+                >
+                  <span className="material-symbols-outlined">{s.icon}</span>
+                  <span className="text-sm font-medium">{s.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Sidebar footer with the two buttons */}
+        <div className="mt-auto pt-8 space-y-3">
+          <button
+            type="button"
+            onClick={handleOpenMedia}
+            title={
+              openMediaDisabled
+                ? "Pick an output path in the Electron app first"
+                : "Open media folder"
+            }
+            disabled={openMediaDisabled}
+            className={`btn btn-muted h-10 w-full justify-start gap-2 ${
+              openMediaDisabled ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            <span className="material-symbols-outlined">folder_open</span>
+            <span className="truncate">Open media folder</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleOpenDocs}
+            title="Docs (GitHub)"
+            className="btn btn-muted h-10 w-full justify-start gap-2"
+          >
+            <span className="material-symbols-outlined">help</span>
+            <span className="truncate">Docs / GitHub</span>
+          </button>
+
+          <div className="text-xs text-[var(--muted)] pt-2">
+            {isElectron ? "Electron mode" : "Preview mode (browser)"}
+          </div>
+        </div>
+      </aside>
+
+      {/* Content */}
+      <main className="flex-1 px-10 py-9 overflow-auto">
+        {step === "files" && (
+          <FilesStep
+            csv={csv}
+            out={out}
+            setCsv={setCsv}
+            onPickCsv={handlePickCsv}
+            onPickOut={handlePickOut}
+            onNext={() => setStep("csv")}
+          />
+        )}
+
+        {step === "csv" && (
+          <CsvStep
+            csvPath={csv}
+            deckName={opts.deckName}
+            colFront={opts.colFront}
+            colBack={opts.colBack}
+            onChange={(patch) => setOpts({ ...opts, ...patch })}
+            onBack={() => setStep("files")}
+            onNext={() => setStep("voice_img")}
+          />
+        )}
+
+        {step === "voice_img" && (
+          <VoiceImageStep
+            opts={opts}
+            voices={VOICES.map((v) => v.id)}
+            onChange={(patch) => setOpts({ ...opts, ...patch })}
+            onBack={() => setStep("csv")}
+            onNext={() => setStep("progress")}
+            onBuild={handleRun}
+            canRun={canRun}
+            disabledReason={disabledReason}
+          />
+        )}
+
+        {step === "progress" && (
+          <ProgressStep
+            running={running}
+            progress={progress}
+            hasError={hasError}
+            cancelRequested={cancelRequested}
+            doneCode={doneCode}
+            outputs={outputs}
+            log={log}
+            onCancel={handleCancel}
+            onReset={handleReset}
+            onCopy={(t) => navigator.clipboard.writeText(t).catch(() => {})}
+            onReveal={(p) => (window as any).anki?.openPath?.(p)}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+/* ----------------- Steps ----------------- */
+
+function FilesStep({
+  csv,
+  out,
+  setCsv,
+  onPickCsv,
+  onPickOut,
+  onNext,
+}: {
+  csv: string | null;
+  out: string | null;
+  setCsv: (v: string | null) => void;
+  onPickCsv: () => void;
+  onPickOut: () => void;
+  onNext: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  const openPicker = () => inputRef.current?.click();
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragActive) setDragActive(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (!f) return;
+    const extOk = /\.csv$/i.test(f.name || "");
+    if (!extOk) {
+      alert("Please drop a .csv file.");
+      return;
+    }
+    const path = (f as any).path || f.name;
+    setCsv(path);
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const extOk = /\.csv$/i.test(f.name || "");
+    if (!extOk) {
+      alert("Please choose a .csv file.");
+      return;
+    }
+    const path = (f as any).path || f.name;
+    setCsv(path);
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-4xl font-black tracking-[-0.03em]">
+          Step 1: Select Your Files
+        </h1>
+        <p className="text-[var(--muted)] mt-1">
+          Choose your CSV file and where to save the Anki package.
+        </p>
+      </div>
+
+      <div className="space-y-8">
+        <div
+          className={`dropzone ${
+            dragActive ? "dropzone--active" : ""
+          } shadow-soft`}
+          onDragOver={onDragOver}
+          onDragEnter={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          onClick={openPicker}
+          role="button"
+          aria-label="Choose your CSV file"
+          title="Drag & drop a CSV here or click to browse"
+        >
+          <div className="max-w-md">
+            <div className="text-lg font-bold mb-2">Choose your CSV file</div>
+            <div className="text-sm text-[var(--muted)] mb-4">
+              Drag &amp; drop your CSV here or click to browse
+            </div>
+            <button type="button" className="btn btn-muted">
+              Browse
             </button>
+            {!!csv && (
+              <div className="mt-4 text-sm opacity-85 truncate max-w-[46ch] mx-auto">
+                {csv}
+              </div>
+            )}
+          </div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={onFileChange}
+          />
+        </div>
+
+        <div>
+          <label className="block text-base font-medium mb-2">
+            Select output location for .apkg file
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              className="input rounded-r-none"
+              placeholder="/path/to/output.apkg"
+              value={out ?? ""}
+              readOnly
+            />
             <button
-              className="icon-btn"
-              title="Docs"
-              onClick={() => window.open("https://github.com/AKhalil609/Anki-gen-UI","_blank")}
+              type="button"
+              className="btn btn-muted rounded-l-none"
+              onClick={onPickOut}
             >
-              <span className="material-symbols-rounded">help</span>
+              Browse
             </button>
           </div>
         </div>
       </div>
 
-      <main className="container-page app-main space-y-6">
-        {!isElectron && (
-          <div className="section-card" style={{ borderStyle: "dashed" }}>
-            <b>Preview mode:</b> You’re in a normal browser.
-            Build decks in the Electron app with <code>pnpm --filter anki-one-desktop dev</code>.
-          </div>
-        )}
+      <div className="flex justify-end pt-8">
+        <button
+          type="button"
+          className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!csv || !out}
+          onClick={onNext}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
 
-        <div className="grid-page">
-          <div className="space-y-6">
-            <section className="section-card">
-              <div className="section-header">
-                <div className="badge">1</div>
-                <div>
-                  <div className="section-title">Pick files</div>
-                  <div className="section-desc">Choose your CSV and the output <code>.apkg</code> location.</div>
-                </div>
-              </div>
-              <FilePickers
-                isElectron={isElectron}
-                csv={csv}
-                out={out}
-                onPickCsv={async () => { if (isElectron) { const r = await chooseFile(); if (r) setCsv(r); } }}
-                onPickOut={async () => { if (isElectron) { const r = await chooseOut(); if (r) setOut(r); } }}
+function CsvStep({
+  csvPath,
+  deckName,
+  colFront,
+  colBack,
+  onChange,
+  onBack,
+  onNext,
+}: {
+  csvPath: string | null;
+  deckName: string;
+  colFront: string;
+  colBack: string;
+  onChange: (patch: Partial<any>) => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const [preview, setPreview] = useState<CsvPreview | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+
+  const refreshPreview = useCallback(async () => {
+    if (!csvPath) return;
+    setLoading(true);
+    setLoadErr(null);
+    setPreview(null);
+    try {
+      const res: CsvPreview = (await (window as any).anki?.previewCsv?.(
+        csvPath,
+        {
+          maxRows: 8,
+          maxBytes: 2 * 1024 * 1024,
+        }
+      )) || { ok: false, header: [], rows: [], delimiter: "," };
+      if (!res.ok) {
+        setLoadErr(res.error || "Failed to read CSV.");
+      }
+      setPreview(res);
+      if (!colFront && res?.header?.length) {
+        const guessFront =
+          res.header.find((h) => /front|question|source/i.test(h)) ||
+          res.header[0];
+        if (guessFront) onChange({ colFront: guessFront });
+      }
+      if (!colBack && res?.header?.length) {
+        const guessBack =
+          res.header.find((h) => /back|answer|target/i.test(h)) ||
+          res.header[1] ||
+          res.header[0];
+        if (guessBack) onChange({ colBack: guessBack });
+      }
+    } catch (e: any) {
+      setLoadErr(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [csvPath, colFront, colBack, onChange]);
+
+  useEffect(() => {
+    if (csvPath) refreshPreview();
+  }, [csvPath, refreshPreview]);
+
+  const headerOptions =
+    preview?.header?.map((h) => ({ value: h, label: h })) ?? [];
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-4xl font-black tracking-[-0.03em]">
+          Step 2: Configure Your Deck
+        </h1>
+        <p className="text-[var(--muted)] mt-1">
+          Map your CSV columns and verify the first few rows below.
+        </p>
+      </div>
+
+      {/* Mapping */}
+      <div className="grid gap-8">
+        <div className="max-w-xl">
+          <label className="flex items-center text-base font-medium mb-2">
+            Deck Name
+            <InfoTip
+              text="Specify the deck name in Anki."
+              ariaLabel="Deck Name help"
+            />
+          </label>
+          <input
+            className="input"
+            placeholder="e.g. Japanese Vocabulary"
+            value={deckName}
+            onChange={(e) => onChange({ deckName: e.target.value })}
+          />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-8 max-w-3xl">
+          <div>
+            <label className="flex items-center text-base font-medium mb-2">
+              Front column
+              <InfoTip
+                text="Select which CSV column will become the card front."
+                ariaLabel="Front column help"
               />
-            </section>
+            </label>
 
-            <section className="section-card">
-              <div className="section-header">
-                <div className="badge">2</div>
-                <div>
-                  <div className="section-title">Configure</div>
-                  <div className="section-desc">Voice, columns, and image settings.</div>
-                </div>
-              </div>
-              <div className="form-grid two-col">
-                <div className="space-y-6">
-                  <GeneralSettings opts={opts} setOpts={setOpts} />
-                </div>
-                <div className="space-y-6">
-                  <ImageSettings opts={opts} setOpts={setOpts} />
-                </div>
-              </div>
-            </section>
+            {headerOptions.length ? (
+              <Dropdown
+                value={colFront}
+                onChange={(v) => onChange({ colFront: v })}
+                options={headerOptions}
+                placeholder="Pick a column…"
+              />
+            ) : (
+              <input
+                className="input"
+                placeholder="e.g. Front"
+                value={colFront}
+                onChange={(e) => onChange({ colFront: e.target.value })}
+              />
+            )}
           </div>
 
-          <div className="space-y-6 sticky-col">
-            <section className="section-card">
-              <div className="section-header">
-                <div className="badge">3</div>
-                <div>
-                  <div className="section-title">Build & Progress</div>
-                  <div className="section-desc">Kick off the run and control it.</div>
-                </div>
-              </div>
-              <ActionsPanel
-                isElectron={isElectron}
-                canRun={canRun}
-                running={running}
-                progress={progress as any}
-                hasError={hasError}
-                cancelRequested={cancelRequested}
-                onRun={handleRun}
-                onCancel={handleCancel}
-                onReset={handleReset}
-                disabledReason={disabledReason}
+          <div>
+            <label className="flex items-center text-base font-medium mb-2">
+              Back column
+              <InfoTip
+                text="Select which CSV column will become the card back."
+                ariaLabel="Back column help"
               />
-            </section>
+            </label>
 
-            <section className="section-card">
-              <LogPanel log={log} />
-            </section>
-
-            <section className="section-card">
-              <OutputsPanel outputs={outputs} />
-            </section>
+            {headerOptions.length ? (
+              <Dropdown
+                value={colBack}
+                onChange={(v) => onChange({ colBack: v })}
+                options={headerOptions}
+                placeholder="Pick a column…"
+              />
+            ) : (
+              <input
+                className="input"
+                placeholder="e.g. Back"
+                value={colBack}
+                onChange={(e) => onChange({ colBack: e.target.value })}
+              />
+            )}
           </div>
         </div>
-      </main>
+      </div>
+
+      {/* Preview */}
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold">CSV Preview</h2>
+            {preview?.delimiter && (
+              <span className="text-xs text-[var(--muted)]">
+                Detected delimiter:{" "}
+                <code>{JSON.stringify(preview.delimiter)}</code>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-muted h-10"
+              onClick={refreshPreview}
+              disabled={!csvPath || loading}
+              title="Reload preview"
+            >
+              <span className="material-symbols-outlined mr-1">refresh</span>
+              {loading ? "Loading…" : "Reload"}
+            </button>
+          </div>
+        </div>
+
+        {!csvPath && (
+          <div className="text-[var(--muted)]">No CSV selected yet.</div>
+        )}
+
+        {csvPath && (
+          <section className="card p-4">
+            {loadErr && (
+              <div className="mb-3 text-sm text-red-400">
+                Failed to load preview: {loadErr}
+              </div>
+            )}
+
+            {!loadErr && (
+              <div className="overflow-auto">
+                <table className="table w-full text-sm">
+                  <thead>
+                    <tr>
+                      {(preview?.header ?? []).map((h, idx) => (
+                        <th key={idx} className="table-th">
+                          {h || <span className="opacity-60">(empty)</span>}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview?.rows ?? []).length ? (
+                      preview!.rows.map((row, rIdx) => (
+                        <tr key={rIdx} className="table-tr">
+                          {row.map((cell, cIdx) => (
+                            <td key={cIdx} className="table-td">
+                              <span className="line-clamp-3 break-words">
+                                {cell}
+                              </span>
+                            </td>
+                          ))}
+                          {preview!.header &&
+                            row.length < preview!.header.length &&
+                            Array.from({
+                              length: preview!.header.length - row.length,
+                            }).map((_, i) => (
+                              <td key={`pad-${i}`} className="table-td">
+                                <span className="opacity-60">—</span>
+                              </td>
+                            ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          className="table-td"
+                          colSpan={preview?.header?.length || 1}
+                        >
+                          <span className="opacity-70">
+                            {loading ? "Loading…" : "No rows to preview."}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-3 pt-8">
+        <button type="button" className="btn btn-muted" onClick={onBack}>
+          Back
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={onNext}
+          disabled={!deckName || !colFront || !colBack}
+          title={
+            !deckName || !colFront || !colBack
+              ? "Please choose Deck Name, Front, and Back columns first"
+              : "Next"
+          }
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VoiceImageStep({
+  opts,
+  voices,
+  onChange,
+  onBack,
+  onNext,
+  onBuild,
+  canRun,
+  disabledReason,
+}: {
+  opts: any;
+  voices: string[];
+  onChange: (patch: Partial<any>) => void;
+  onBack: () => void;
+  onNext: () => void;
+  onBuild: () => void;
+  canRun: boolean;
+  disabledReason: string | null;
+}) {
+  // Default the checkbox to checked if the value is undefined.
+  const cacheChecked = opts.useImageCache !== false;
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      <h1 className="text-4xl font-black tracking-[-0.03em] mb-8">
+        Step 3: Configure Voice and Image Sources
+      </h1>
+
+      <div className="grid gap-8">
+        <section className="card p-6">
+          <h2 className="text-2xl font-bold mb-6">Voice Configuration</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="flex justify-between flex-col">
+              <label className="block text-base font-medium mb-2">Voice</label>
+              <VoiceDropdown
+                value={opts.voice}
+                onChange={(id) => onChange({ voice: id })}
+              />
+            </div>
+
+            <div>
+              <label className="flex items-center text-base font-medium mb-2">
+                Text-to-Speech Source
+                <InfoTip
+                  text="Select which column will be used for text-to-speech."
+                  ariaLabel="TTS source help"
+                />
+              </label>
+              <Dropdown
+                value={opts.ttsFrom ?? "back"}
+                onChange={(v) => onChange({ ttsFrom: v })}
+                options={[
+                  { value: "front", label: "Front column" },
+                  { value: "back", label: "Back column" },
+                ]}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="card p-6">
+          <h2 className="text-2xl font-bold mb-6">Image Configuration</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="flex text-base font-medium mb-2 items-center">
+                Image Source
+                <InfoTip
+                  text="Select which column will be used for generating images."
+                  ariaLabel="Image source help"
+                />
+              </label>
+              <Dropdown
+                value={opts.imagesFrom ?? "back"}
+                onChange={(v) => onChange({ imagesFrom: v })}
+                options={[
+                  { value: "front", label: "Front column" },
+                  { value: "back", label: "Back column" },
+                ]}
+              />
+            </div>
+            <div>
+              <label className="flex items-center text-base font-medium mb-2">
+                Image Mode
+                <InfoTip
+                  text="Select which method of image generation to use."
+                  ariaLabel="Image mode help"
+                />
+              </label>
+
+              <Dropdown
+                value={opts.imageMode ?? "search"}
+                onChange={(v) => onChange({ imageMode: v })}
+                options={[
+                  { value: "search", label: "Search (Google/Openverse/Wiki)" },
+                  {
+                    value: "generate",
+                    label: "AI Generate (Pollinations)(Experimental)",
+                  },
+                ]}
+              />
+            </div>
+          </div>
+
+          {opts.imageMode === "generate" && (
+            <div className="grid md:grid-cols-2 gap-6 mt-6">
+              <div>
+                <label className="text-base font-medium mb-2 flex items-center">
+                  AI Gen Image Style
+                  <InfoTip
+                    text="Choose the visual style for AI-generated images."
+                    ariaLabel="AI image style help"
+                  />
+                </label>
+                <p className="text-[var(--muted)] text-xs text-yellow-300 mb-1 mt-1">
+                  Uses an open-source model (slow and less accurate); if image
+                  generation fails, it fetches from Google—best results with
+                  English input.{" "}
+                </p>
+                <Dropdown
+                  value={opts.genStyle ?? ""}
+                  onChange={(v) => onChange({ genStyle: v })}
+                  options={[
+                    { value: "anime", label: "Anime" },
+                    { value: "comic", label: "Comic" },
+                    { value: "illustration", label: "Illustration" },
+                    { value: "photorealistic", label: "Photorealistic" },
+                    { value: "watercolor", label: "Watercolor" },
+                    { value: "3D render", label: "3D Render" },
+                  ]}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* --- NEW: Use cached images toggle (checked by default) --- */}
+          <div className="mt-6 flex items-start justify-between gap-4 rounded-lg bg-white/5 p-4">
+            <div className="grid">
+              <div className="font-semibold">Use cached images</div>
+              <div className="text-sm text-[var(--muted)]">
+                Reuse existing images if available; otherwise fetch or generate
+                new ones.
+              </div>
+            </div>
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-[var(--primary)] cursor-pointer"
+                checked={cacheChecked}
+                onChange={() => onChange({ useImageCache: !cacheChecked })}
+                aria-label="Use cached images"
+              />
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <div className="flex justify-between pt-8">
+        <button type="button" className="btn btn-muted" onClick={onBack}>
+          Back
+        </button>
+        <div className="flex gap-3">
+          <button type="button" className="btn btn-muted" onClick={onNext}>
+            Next
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canRun}
+            title={disabledReason ?? "Build deck"}
+            onClick={onBuild}
+          >
+            Build Deck
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProgressStep({
+  running,
+  progress,
+  hasError,
+  cancelRequested,
+  doneCode,
+  outputs,
+  log,
+  onCancel,
+  onReset,
+  onCopy,
+  onReveal,
+}: {
+  running: boolean;
+  progress: {
+    done: number;
+    failed: number;
+    queued: number;
+    running: number;
+    retries: number;
+  } | null;
+  hasError: boolean;
+  cancelRequested: boolean;
+  doneCode: number | null;
+  outputs: string[];
+  log: string;
+  onCancel: () => void;
+  onReset: () => void;
+  onCopy: (t: string) => void;
+  onReveal: (p: string) => void;
+}) {
+  const total =
+    (progress?.done ?? 0) +
+    (progress?.failed ?? 0) +
+    (progress?.running ?? 0) +
+    (progress?.queued ?? 0);
+  const ratio =
+    total > 0 ? Math.min(1, Math.max(0, (progress?.done ?? 0) / total)) : 0;
+  const isSuccess =
+    doneCode === 0 || (!!outputs.length && !running && !hasError);
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {!isSuccess && (
+        <>
+          <div className="mb-6">
+            <h1 className="text-4xl font-black tracking-[-0.03em]">
+              Building your Anki deck…
+            </h1>
+            <p className="text-[var(--muted)]">
+              Please wait while we process your file.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-6 mb-8">
+            <div className="flex justify-between">
+              <div className="text-base font-medium">Processing…</div>
+              <div className="text-sm">{Math.round(ratio * 100)}%</div>
+            </div>
+            <div className="h-2.5 bg-white/10 rounded-lg overflow-hidden">
+              <div
+                className="h-full"
+                style={{
+                  width: `${Math.round(ratio * 100)}%`,
+                  background: "var(--primary)",
+                }}
+              />
+            </div>
+
+            {running && (
+              <button
+                type="button"
+                className="btn h-12 px-5 gap-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 w-fit"
+                onClick={onCancel}
+                disabled={cancelRequested}
+                title="Cancel current run"
+              >
+                <span className="material-symbols-outlined !text-xl">
+                  stop_circle
+                </span>
+                {cancelRequested ? "Cancelling…" : "Stop Process"}
+              </button>
+            )}
+          </div>
+
+          <section className="card p-4">
+            <div className="font-bold mb-2">Logs</div>
+            <pre className="bg-black/25 rounded-md p-4 h-64 overflow-auto text-sm whitespace-pre-wrap">
+              {log || "— No log yet —"}
+            </pre>
+          </section>
+
+          {(hasError || (!running && progress)) && (
+            <div className="pt-6">
+              <button type="button" className="btn btn-muted" onClick={onReset}>
+                Reset
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {isSuccess && (
+        <div className="grid place-items-center text-center card p-10">
+          <span
+            className="material-symbols-outlined text-green-500"
+            style={{ fontSize: 96, fontVariationSettings: "'FILL' 1" }}
+          >
+            check_circle
+          </span>
+          <h2 className="mt-4 text-4xl font-black">
+            File Generated Successfully
+          </h2>
+          <p className="text-[var(--muted)] mt-1">
+            Your Anki deck has been created and is ready.
+          </p>
+
+          {outputs[0] && (
+            <div className="w-full max-w-xl mt-6 text-left">
+              <label className="block text-base font-medium mb-2">
+                Output file path
+              </label>
+              <input className="input" readOnly value={outputs[0]} />
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-6 flex-wrap justify-center">
+            {outputs[0] && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-muted"
+                  onClick={() => onCopy(outputs[0])}
+                >
+                  Copy Path to Clipboard
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => onReveal(outputs[0])}
+                >
+                  Import to Anki
+                </button>
+              </>
+            )}
+            <button type="button" className="btn btn-muted" onClick={onReset}>
+              Start Over
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!running && hasError && !isSuccess && (
+        <div className="grid place-items-center text-center card mt-8 p-10">
+          <span
+            className="material-symbols-outlined text-red-500"
+            style={{ fontSize: 72 }}
+          >
+            error
+          </span>
+          <h2 className="mt-3 text-3xl font-bold">Generation Failed</h2>
+          <p className="text-[var(--muted)] mt-1">
+            Something went wrong. Check logs below or try again.
+          </p>
+          <div className="flex gap-3 mt-6">
+            <button type="button" className="btn btn-primary" onClick={onReset}>
+              Retry / Start Over
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

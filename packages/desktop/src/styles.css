@@ -1,412 +1,112 @@
-/* ---------- THEME TOKENS ---------- */
+/* Load Tailwind v4 first */
+@import "tailwindcss";
+
+/* Make Tailwind utilities available for @apply in this file */
+@reference "tailwindcss";
+
+/* ---------- Theme tokens ---------- */
 :root {
-  --app-topbar-h: 56px;
-
-  /* Material-ish base */
-  --md-sys-color-primary: #6750a4;
-  --md-sys-color-on-primary: #ffffff;
-
-  --md-sys-color-surface: #f7f3ff;
-  --md-sys-color-on-surface: #1d1b20;
-  --md-sys-color-on-surface-variant: #5c5b66;
-  --md-sys-color-outline: #79747e;
-
-  /* Elevation */
-  --surface-container: #ffffff;
-  --surface-elev-1: #ffffff;
-  --surface-elev-2: #faf7ff;
-
-  /* Inputs */
-  --input-bg: color-mix(in oklab, var(--surface-elev-1) 96%, transparent);
-  --input-fg: #1b1b1f;    /* strong on-surface */
-  --input-muted: #56565f; /* labels/placeholders */
-  --input-outline: color-mix(in oklab, var(--md-sys-color-outline) 55%, transparent);
-
-  /* Misc (used by Log panel fallback) */
-  --md-sys-color-surface-container-highest: #f3f0f7;
+  --bg: #0f1720;         /* slightly richer dark */
+  --card: #101922;
+  --text: #f8fafc;
+  --muted: #9db0c2;
+  --primary: #1173d4;
+}
+:root:not(.dark) {
+  --bg: #f6f7f8;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #64748b;
+  --primary: #1173d4;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --md-sys-color-surface: #121018;
-    --md-sys-color-on-surface: #ebe6f0;
-    --md-sys-color-on-surface-variant: #cac4d0;
-    --md-sys-color-outline: #8d8793;
-
-    /* Elevation in dark */
-    --surface-container: #1a1721;
-    --surface-elev-1: #1e1a26;
-    --surface-elev-2: #201d2a;
-
-    /* Inputs in dark */
-    --input-bg: #231f2c;
-    --input-fg: #f1ecf8;
-    --input-muted: #b8b2c0;
-    --input-outline: #6e6880;
-
-    --md-sys-color-surface-container-highest: #201c27;
-  }
-}
-
-/* ---------- BACKGROUND ---------- */
 html, body, #root { height: 100%; }
 body {
-  background:
-    radial-gradient(60vw 60vw at -10% -10%, #8b5cf60d 0%, transparent 60%),
-    radial-gradient(50vw 50vw at 110% -10%, #22d3ee0d 0%, transparent 60%),
-    radial-gradient(70vw 70vw at 50% 120%, #f59e0b14 0%, transparent 60%),
-    linear-gradient(180deg, var(--md-sys-color-surface) 0%, var(--md-sys-color-surface) 100%);
-  color: var(--md-sys-color-on-surface);
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", "Liberation Sans", "Apple Color Emoji", "Segoe UI Emoji";
 }
 
-/* ---------- CONTAINER ---------- */
-.container-page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 16px;
+label {
+  line-height: 1;
 }
 
-/* ---------- TOP BAR ---------- */
-.app-navbar {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  height: var(--app-topbar-h);
-  backdrop-filter: saturate(1.1) blur(8px);
-  background: color-mix(in oklab, var(--md-sys-color-surface) 86%, transparent);
-  border-bottom: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 20%, transparent);
-  box-shadow:
-    0 0.5px 0 color-mix(in oklab, var(--md-sys-color-outline) 10%, transparent),
-    0 10px 24px #00000010;
+/* ---------- Helpers ---------- */
+.input {
+  @apply w-full h-14 rounded-lg border bg-transparent px-4 text-base outline-none transition
+         focus:ring-2 focus:ring-[color:var(--primary)]/40 focus:border-[color:var(--primary)];
+  border-color: color-mix(in oklab, #ffffff 0%, #3b4754 35%);
 }
-.app-navbar__row {
-  height: 100%;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-}
-.app-title { font-weight: 700; letter-spacing: .2px; }
-.app-subtitle { opacity: .75; font-size: .9rem; }
+.input::placeholder { color: var(--muted); }
 
-/* Top-right icon buttons */
-.icon-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  height: 36px; width: 36px; border-radius: 10px;
-  border: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 18%, transparent);
-  background: color-mix(in oklab, var(--surface-elev-1) 85%, transparent);
-  color: var(--md-sys-color-on-surface);
+.btn {
+  @apply inline-flex items-center justify-center rounded-lg px-5 h-12 font-bold
+         cursor-pointer select-none transition;
+}
+.btn-primary {
+  background: var(--primary); color: white;
+}
+.btn-primary:hover { filter: brightness(1.05); }
+.btn-muted {
+  @apply bg-slate-200/60 dark:bg-slate-700/60 text-slate-900 dark:text-white;
+}
+.btn-muted:hover { @apply bg-slate-200 dark:bg-slate-700; }
+
+.card { @apply rounded-xl; background: var(--card); }
+.shadow-soft { box-shadow: 0 6px 30px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.24); }
+
+/* Dropzone states */
+.dropzone {
+  @apply border-2 border-dashed rounded-xl p-12 grid place-items-center text-center transition
+         bg-transparent;
+  border-color: color-mix(in oklab, #fff 0%, #3b4754 40%);
   cursor: pointer;
 }
-.icon-btn:hover { background: color-mix(in oklab, var(--surface-elev-2) 85%, transparent); }
-.icon-btn:active { transform: translateY(0.5px); }
-.icon-btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
-.icon-btn .material-symbols-rounded { font-size: 20px; }
-
-/* ---------- PAGE LAYOUT ---------- */
-main.app-main { padding-top: 12px; }
-
-.grid-page {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-@media (min-width: 980px) {
-  .grid-page {
-    align-items: start;
-  }
-  .sticky-col {
-    position: sticky;
-    top: calc(var(--app-topbar-h) + 12px);
-  }
+.dropzone:hover { @apply bg-white/5; }
+.dropzone--active {
+  border-color: var(--primary);
+  outline: 3px solid color-mix(in oklab, var(--primary) 40%, transparent);
+  outline-offset: 2px;
+  background: color-mix(in oklab, var(--primary) 10%, transparent);
+  @apply cursor-copy;
 }
 
-/* ---------- SECTION CARDS ---------- */
-.section-card {
-  background: var(--surface-container);
-  border: 1px solid color-mix(in oklab, var(--md-sys-color-outline) 14%, transparent);
-  border-radius: 16px;
-  box-shadow:
-    0 1px 2px rgba(0,0,0,.08),
-    0 6px 20px rgba(0,0,0,.08);
-  padding: 16px;
+/* Sidebar buttons */
+.nav-btn {
+  @apply flex items-center gap-3 w-full px-3 py-2 rounded-lg text-left transition cursor-pointer;
 }
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: -2px 0 12px 0;
+.nav-btn--active {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+  color: white;
 }
-.section-header .badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 50%;
-  background: color-mix(in oklab, var(--md-sys-color-primary) 24%, var(--surface-elev-1));
-  color: var(--md-sys-color-on-surface);
-  font-weight: 700; font-size: 12px;
-  border: 1px solid color-mix(in oklab, var(--md-sys-color-primary) 40%, transparent);
-}
-.section-title { font-weight: 700; }
-.section-desc { opacity: .75; font-size: 12px; }
+.nav-btn--idle { @apply text-[color:var(--muted)] hover:bg-white/5; }
 
-/* ---------- FORMS GRID ---------- */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-@media (min-width: 820px) {
-  .form-grid.two-col { grid-template-columns: 1fr 1fr; }
+/* Material Symbols defaults */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'Wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
 }
 
-/* ---------- UTILITIES ---------- */
-.m-0 { margin: 0; }
-.mt-0 { margin-top: 0; }
-.mt-8 { margin-top: 8px; }
-.space-y-6 > * + * { margin-top: 1.5rem; }
-
-.input { width: 100%; padding: 8px 10px; border: 1px solid #8883; border-radius: 10px; color: #474545a6;}
-.btn { padding: 10px 14px; border-radius: 12px; border: 1px solid #8883; background: #fff1; cursor: pointer; }
-.btn.primary { background: #4f46e5; color: white; border-color: transparent; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.log { width: 100%; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; border-radius: 10px; border: 1px solid #8883; }
-
-/* =========================================================
-   MATERIAL WEB – INPUT/SELECT CONTRAST
-   ========================================================= */
-
-/* Text fields */
-md-filled-text-field {
-  --md-filled-text-field-container-color: var(--input-bg);
-  --md-filled-text-field-input-text-color: var(--input-fg);
-  --md-filled-text-field-input-text-placeholder-color: var(--input-muted);
-  --md-filled-text-field-label-text-color: var(--input-muted);
-  --md-filled-text-field-active-indicator-color: var(--input-outline);
-  --md-filled-text-field-focus-active-indicator-color: var(--md-sys-color-primary);
-  caret-color: var(--md-sys-color-primary);
+/* ---------- Lightweight table styling for CSV preview ---------- */
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
 }
-
-/* Read-only fields (file paths) should still look clear */
-md-filled-text-field[readonly],
-md-filled-text-field[readonly]::part(field),
-md-filled-text-field[readonly]::part(input) {
-  --md-filled-text-field-input-text-color: var(--input-fg);
-  --md-filled-text-field-label-text-color: var(--input-muted);
-  opacity: 1;
+.table-th {
+  @apply sticky top-0 z-10 text-left text-xs font-bold uppercase tracking-wide;
+  background: color-mix(in oklab, var(--card) 92%, #000 8%);
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in oklab, #ffffff 0%, #3b4754 35%);
 }
-
-/* Select trigger (the closed select) */
-md-filled-select {
-  --md-filled-select-container-color: var(--input-bg);
-  --md-filled-select-active-indicator-color: var(--input-outline);
-  --md-filled-select-focus-active-indicator-color: var(--md-sys-color-primary);
-
-  /* Text in the closed trigger */
-  --md-sys-color-on-surface: var(--input-fg);
-
-  /* ===== CRITICAL: TOKENS APPLIED ON HOST to affect shadow dropdown ===== */
-  /* Menu surface */
-  --md-menu-container-color: var(--surface-elev-2);
-
-  /* Unselected option rows (both list-item and menu-item paths) */
-  --md-list-item-label-text-color: var(--input-fg);
-  --md-list-item-supporting-text-color: var(--input-muted);
-  --md-list-item-container-color: transparent;
-
-  --md-menu-item-label-text-color: var(--input-fg);
-  --md-menu-item-supporting-text-color: var(--input-muted);
-  --md-menu-item-container-color: transparent;
-
-  /* Hover/focus layers */
-  --md-list-item-hover-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
-  --md-list-item-focus-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
-  --md-menu-item-hover-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
-  --md-menu-item-focus-state-layer-color: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
-
-  /* Selected option row */
-  --md-list-item-selected-container-color: color-mix(in oklab, var(--md-sys-color-primary) 18%, var(--surface-elev-2));
-  --md-list-item-selected-label-text-color: var(--input-fg);
-  --md-menu-item-selected-container-color: color-mix(in oklab, var(--md-sys-color-primary) 18%, var(--surface-elev-2));
-  --md-menu-item-selected-label-text-color: var(--input-fg);
+.table-tr:nth-child(even) td {
+  background: color-mix(in oklab, var(--card) 96%, #000 4%);
 }
-
-/* (Optional: reinforce general option tokens for any light-DOM usage) */
-md-select-option {
-  --md-sys-color-on-surface: var(--input-fg);
-  --md-sys-color-on-surface-variant: var(--input-muted);
+.table-td {
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in oklab, #ffffff 0%, #3b4754 30%);
+  vertical-align: top;
 }
-
-/* =========================================================
-   MENU/OPTIONS – soft reinforcement (works when parts are exposed)
-   ========================================================= */
-md-menu::part(container),
-md-menu::part(surface) {
-  background: var(--surface-elev-2);
-}
-md-select-option::part(container) {
-  background: transparent;
-}
-md-select-option[aria-selected="true"]::part(container) {
-  background: color-mix(in oklab, var(--md-sys-color-primary) 18%, var(--surface-elev-2));
-}
-md-select-option::part(headline),
-md-select-option::part(label) {
-  color: var(--input-fg);
-}
-md-select-option::part(supporting-text),
-md-select-option::part(subhead) {
-  color: var(--input-muted);
-}
-md-select-option:hover::part(container) {
-  background: color-mix(in oklab, var(--md-sys-color-primary) 10%, transparent);
-}
-md-select-option:focus-visible::part(container) {
-  background: color-mix(in oklab, var(--md-sys-color-primary) 14%, transparent);
-}
-
-/* Last-resort fallback (in case the build renders role=option nodes) */
-md-menu [role="option"],
-md-menu [role="option"] * {
-  color: var(--input-fg) !important;
-}
-
-/* ===========================
-   POLISH & PERSONALITY (animations + transitions)
-   =========================== */
-
-/* Respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ---------- Shared easing & transitions ---------- */
-:root {
-  --elev-in: cubic-bezier(.2,.8,.2,1);
-  --elev-out: cubic-bezier(.4,0,.2,1);
-  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--md-sys-color-primary) 35%, transparent);
-}
-
-/* Smoothen common elements */
-.section-card,
-.icon-btn,
-md-filled-text-field,
-md-filled-select,
-md-icon-button,
-.alert,
-.btn {
-  transition:
-    box-shadow .25s var(--elev-in),
-    transform .25s var(--elev-in),
-    border-color .2s var(--elev-out),
-    background-color .2s var(--elev-out),
-    color .2s var(--elev-out),
-    opacity .2s var(--elev-out);
-}
-
-/* ---------- Entrance animations (subtle) ---------- */
-@keyframes cardPopIn {
-  from { opacity: 0; transform: translateY(6px) scale(.995); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-.section-card {
-  animation: cardPopIn .35s var(--elev-in) both;
-}
-.section-card:nth-of-type(1) { animation-delay: .02s; }
-.section-card:nth-of-type(2) { animation-delay: .04s; }
-.section-card:nth-of-type(3) { animation-delay: .06s; }
-
-/* ---------- Card hover elevation ---------- */
-.section-card:hover {
-  box-shadow:
-    0 2px 6px rgba(0,0,0,.08),
-    0 10px 28px rgba(0,0,0,.10);
-}
-
-/* ---------- Icon buttons: micro-interactions ---------- */
-.icon-btn:hover { transform: translateY(-1px); }
-.icon-btn:active { transform: translateY(0); }
-.icon-btn .material-symbols-rounded {
-  transition: transform .25s var(--elev-in), opacity .2s var(--elev-out);
-}
-.icon-btn:hover .material-symbols-rounded { transform: scale(1.06); }
-
-/* ---------- Focus rings (keyboard friendly) ---------- */
-:where(.icon-btn, .btn, md-filled-text-field, md-filled-select, md-icon-button):focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring), 0 1px 2px rgba(0,0,0,.08), 0 6px 20px rgba(0,0,0,.08);
-}
-
-/* ---------- Inputs: lift on hover, settle on focus ---------- */
-md-filled-text-field:hover,
-md-filled-select:hover {
-  box-shadow: 0 1px 3px rgba(0,0,0,.08);
-  transform: translateY(-0.5px);
-}
-md-filled-text-field:focus-within,
-md-filled-select:focus-within {
-  transform: none;
-  box-shadow: var(--focus-ring);
-}
-
-/* ---------- Sticky column: fade-in on stick (subtle) ---------- */
-.sticky-col {
-  animation: cardPopIn .35s var(--elev-in) both;
-}
-
-/* ---------- Progress: gentle pulse at start ---------- */
-@keyframes softPulse {
-  0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--md-sys-color-primary) 26%, transparent); }
-  70%  { box-shadow: 0 0 0 6px color-mix(in oklab, var(--md-sys-color-primary) 0%, transparent); }
-  100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--md-sys-color-primary) 0%, transparent); }
-}
-.section-card:has(md-linear-progress[indeterminate]),
-.section-card:has(md-linear-progress[value]) {
-  animation: softPulse 1.2s ease-out 1;
-}
-
-/* ---------- Outputs panel: glow on new paths ---------- */
-@keyframes listGlow {
-  from { background: color-mix(in oklab, var(--md-sys-color-primary) 12%, transparent); }
-  to   { background: transparent; }
-}
-.section-card:has(ul > li) ul > li {
-  border-radius: 10px;
-}
-.section-card:has(ul > li) ul > li:first-child {
-  animation: listGlow 900ms var(--elev-out) 1;
-}
-
-/* ---------- Alerts: slide-in ---------- */
-@keyframes slideIn {
-  from { transform: translateY(-4px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
-.alert { animation: slideIn .3s var(--elev-in) both; }
-
-/* ---------- Navbar: tiny shadow grow on scroll (no JS needed) ---------- */
-/* Trick: as soon as content overflows, make it a bit more pronounced */
-.app-navbar {
-  transition: box-shadow .25s var(--elev-in), background-color .25s var(--elev-out);
-}
-@media (min-height: 500px) {
-  main.app-main { scroll-margin-top: calc(var(--app-topbar-h) + 8px); }
-}
-
-/* ---------- Section headers: icon wiggle on hover ---------- */
-.section-header .badge {
-  transition: transform .2s var(--elev-in), background-color .2s var(--elev-out);
-}
-.section-card:hover .section-header .badge {
-  transform: translateY(-1px);
-  background: color-mix(in oklab, var(--md-sys-color-primary) 30%, var(--surface-elev-1));
-}
-
-/* ---------- Buttons: playful lift & press ---------- */
-.btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-.btn:active { transform: translateY(0); box-shadow: none; }
-
-/* ---------- Minor: smoother anchor behavior ---------- */
-html { scroll-behavior: smooth; }

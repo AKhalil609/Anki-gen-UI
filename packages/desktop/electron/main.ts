@@ -49,31 +49,9 @@ function readCsvHeader(csvPath: string): string[] {
     if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
     chunk = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const firstLine = chunk.split("\n")[0] ?? "";
+    const delimiter = detectDelimiter(firstLine);
 
-    // Parse CSV cells for that line (handles "quotes, with, commas")
-    const cells: string[] = [];
-    let cur = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < firstLine.length; i++) {
-      const ch = firstLine[i];
-      if (ch === '"') {
-        if (inQuotes && firstLine[i + 1] === '"') {
-          // escaped quote
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === "," && !inQuotes) {
-        cells.push(cur.trim());
-        cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    cells.push(cur.trim());
-    return cells;
+    return parseCsvLine(firstLine, delimiter);
   } finally {
     fs.closeSync(fd);
   }
@@ -90,6 +68,145 @@ function csvHasColumns(csvPath: string, required: string[]): { ok: boolean; miss
   }
 }
 
+/* ---------- CSV preview (header + first N rows) ---------- */
+
+function detectDelimiter(firstLine: string): string {
+  // Basic heuristic: prefer the most frequent among , ; \t | (pipes common too)
+  const candidates = [",", ";", "\t", "|"];
+  let best = ",";
+  let bestCount = -1;
+  for (const d of candidates) {
+    const c = (firstLine.match(new RegExp(`\\${d}`, "g")) || []).length;
+    if (c > bestCount) {
+      best = d;
+      bestCount = c;
+    }
+  }
+  return best;
+}
+
+function parseCsvLine(line: string, delimiter: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === delimiter && !inQuotes) {
+      cells.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  cells.push(cur);
+  return cells.map((s) => s.trim());
+}
+
+function parseCsvChunkToRows(
+  chunk: string,
+  delimiter: string,
+  maxRows: number
+): string[][] {
+  // Normalize newlines and strip BOM if present
+  if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
+  chunk = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  const rows: string[][] = [];
+  let cell = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < chunk.length; i++) {
+    const ch = chunk[i];
+
+    if (ch === '"') {
+      if (inQuotes && chunk[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && ch === delimiter) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+
+    if (!inQuotes && ch === "\n") {
+      row.push(cell);
+      rows.push(row.map((c) => c.trim()));
+      cell = "";
+      row = [];
+      if (rows.length >= maxRows + 1 /* header + N rows */) break;
+      continue;
+    }
+
+    cell += ch;
+  }
+
+  // Push last row if chunk didn’t end with newline
+  if (cell.length || row.length) {
+    row.push(cell);
+    rows.push(row.map((c) => c.trim()));
+  }
+
+  return rows;
+}
+
+function readCsvPreview(csvPath: string, maxRows: number, maxBytes: number) {
+  const fd = fs.openSync(csvPath, "r");
+  try {
+    const stat = fs.fstatSync(fd);
+    const toRead = Math.min(stat.size, Math.max(32 * 1024, maxBytes)); // at least 32 KB
+    const buf = Buffer.allocUnsafe(toRead);
+    const bytesRead = fs.readSync(fd, buf, 0, toRead, 0);
+    let chunk = buf.slice(0, bytesRead).toString("utf8");
+
+    // Detect delimiter based on first line
+    const firstLine = chunk.split(/\r\n|\r|\n/)[0] ?? "";
+    const delimiter = detectDelimiter(firstLine);
+
+    const rows = parseCsvChunkToRows(chunk, delimiter, maxRows);
+    if (!rows.length) {
+      return { ok: false, error: "No content found", header: [], rows: [], delimiter };
+    }
+
+    const header = rows[0] ?? [];
+    const data = rows.slice(1, 1 + maxRows);
+
+    // Pad rows so table widths are stable
+    const width = header.length;
+    const padded = data.map((r) =>
+      r.length < width ? [...r, ...Array(width - r.length).fill("")] : r
+    );
+
+    return { ok: true, header, rows: padded, delimiter };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: err?.message || String(err),
+      header: [],
+      rows: [],
+      delimiter: ",",
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/* ---------------- Electron app window ---------------- */
+
 function createWindow() {
   if (!app.isPackaged) {
     app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess");
@@ -102,8 +219,12 @@ function createWindow() {
   const prodIndexHtml = path.join(app.getAppPath(), "dist", "index.html");
 
   win = new BrowserWindow({
-    width: 980,
-    height: 720,
+    width: 1200,
+    height: 692,
+    useContentSize: true,
+    minWidth: 900,
+    minHeight: 560,
+    backgroundColor: "#101922",
     show: false,
     webPreferences: {
       preload: preloadPath,
@@ -126,7 +247,7 @@ function createWindow() {
     win = null;
   });
 
-  if (isDev) {
+  if (!app.isPackaged) {
     const url = "http://localhost:5175";
     win.loadURL(url).catch((err) => console.error("[main] loadURL error:", err));
     win.webContents.openDevTools({ mode: "detach" });
@@ -201,6 +322,29 @@ ipcMain.handle("open-path", async (_evt, filePath: string) => {
     return { ok: false, error: err?.message || String(err) };
   }
 });
+
+/** CSV preview: header + first N rows (fast + safe) */
+ipcMain.handle(
+  "preview-csv",
+  async (_evt, filePath: string, opts?: { maxRows?: number; maxBytes?: number }) => {
+    try {
+      if (!filePath || !fs.existsSync(filePath)) {
+        return { ok: false, error: "CSV path missing or not found", header: [], rows: [], delimiter: "," };
+      }
+      const maxRows = Math.max(1, Math.min(50, opts?.maxRows ?? 8));
+      const maxBytes = Math.max(32 * 1024, Math.min(8 * 1024 * 1024, opts?.maxBytes ?? 2 * 1024 * 1024));
+      return readCsvPreview(filePath, maxRows, maxBytes);
+    } catch (e: any) {
+      return {
+        ok: false,
+        error: e?.message || String(e),
+        header: [],
+        rows: [],
+        delimiter: ",",
+      };
+    }
+  }
+);
 
 ipcMain.on("cancel-pipeline", async () => {
   await terminateCurrentWorker("cancel");
