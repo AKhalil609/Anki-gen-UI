@@ -11,7 +11,7 @@
     "dev": "concurrently -k -n VITE,TS,ELEC -c auto \"vite --port 5175\" \"tsc -p electron/tsconfig.json -w\" \"wait-on tcp:5175 && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec 'electron electron/dist/main.js --enable-logging=stderr'\"",
     "start": "electron electron/dist/main.js",
     "build": "vite build && tsc -p electron/tsconfig.json && node scripts/embed-core.mjs",
-    "dist:mac": "pnpm build && electron-builder --mac dmg",
+    "dist:mac": "pnpm build && electron-builder --mac zip",
     "dist:win": "pnpm build && pnpm icons && electron-builder --win nsis",
     "dist:linux": "pnpm build && pnpm icons && electron-builder --linux AppImage"
   },
@@ -33,13 +33,10 @@
     ],
     "mac": {
       "target": [
-        "dmg"
+        "zip"
       ],
       "category": "public.app-category.education",
       "hardenedRuntime": true,
-      "icon": "build/logo.icns"
-    },
-    "dmg": {
       "icon": "build/logo.icns"
     },
     "win": {

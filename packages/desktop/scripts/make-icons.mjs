@@ -1,53 +1,70 @@
+// packages/desktop/scripts/make-icons.mjs
 import fs from "node:fs/promises";
+import fssync from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
+import { exec as execCb } from "node:child_process";
+import { promisify } from "node:util";
+
+const exec = promisify(execCb);
 
 const root = path.resolve(process.cwd());
-const srcPng = path.join(root, "assets", "anki_logo.png"); // source logo
+const srcPng = path.join(root, "build", "logo.png"); // your existing artwork
 const buildDir = path.join(root, "build");
-const iconsDir = path.join(buildDir, "icons");
+const iconsetDir = path.join(buildDir, "AnkiOne.iconset");
 
-// Sizes recommended for Linux/AppImage + extras
-const pngSizes = [16, 24, 32, 48, 64, 128, 256, 512, 1024];
+// Apple icon sizes (1x/2x variants → up to 1024)
+const macIconSizes = [16, 32, 64, 128, 256, 512, 1024];
+
+function exists(p) {
+  try { return fssync.existsSync(p); } catch { return false; }
+}
 
 async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
 }
 
-async function generatePngs() {
-  await ensureDir(iconsDir);
-  const img = sharp(srcPng);
-  for (const size of pngSizes) {
-    const out = path.join(iconsDir, `icon_${size}.png`);
-    await img
-      .clone()
-      .resize(size, size, { fit: "contain" })
-      .png()
-      .toFile(out);
+async function generateMacIcns() {
+  if (!exists(srcPng)) {
+    throw new Error(`Source logo not found: ${srcPng}`);
   }
-  // Convenient default icon.png (512)
-  await img.clone().resize(512, 512, { fit: "contain" }).png().toFile(path.join(buildDir, "icon.png"));
-  console.log(`[icons] Wrote PNGs in ${iconsDir} with sizes: ${pngSizes.join(", ")}`);
-}
 
-async function generateIco() {
-  const toIco = (await import("to-ico")).default;
-  const buffers = await Promise.all(
-    [16, 24, 32, 48, 64, 128, 256].map((s) =>
-      sharp(srcPng).resize(s, s, { fit: "contain" }).png().toBuffer()
-    )
-  );
-  const ico = await toIco(buffers);
-  await fs.writeFile(path.join(buildDir, "logo.ico"), ico);
-  console.log(
-    `[icons] Wrote ${path.join(buildDir, "logo.ico")} with sizes: 16,24,32,48,64,128,256`
-  );
+  // Load image and remove transparent padding.
+  // sharp@0.34 expects an object for trim options.
+  let base = sharp(srcPng);
+  try {
+    base = base.trim({ threshold: 10 }); // preferred on your sharp version
+  } catch {
+    // Fallback to default trim() if the above isn’t supported for some reason
+    base = sharp(srcPng).trim();
+  }
+
+  // Normalize to a 1024×1024 square (cover => fills the canvas, no big margins)
+  const square = await base
+    .resize(1024, 1024, { fit: "cover", position: "centre" })
+    .png()
+    .toBuffer();
+
+  await fs.rm(iconsetDir, { recursive: true, force: true });
+  await ensureDir(iconsetDir);
+
+  // Emit iconset with all sizes (1x and 2x)
+  for (const size of macIconSizes) {
+    for (const scale of [1, 2]) {
+      const dim = size * scale;
+      const filename = `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`;
+      const outPath = path.join(iconsetDir, filename);
+      await sharp(square).resize(dim, dim).png().toFile(outPath);
+    }
+  }
+
+  // Build .icns from iconset
+  const icnsPath = path.join(buildDir, "logo.icns");
+  await exec(`iconutil -c icns "${iconsetDir}" -o "${icnsPath}"`);
+  console.log(`[icons] Created ${icnsPath} (includes Retina sizes up to 1024×1024).`);
 }
 
 (async () => {
   await ensureDir(buildDir);
-  await generatePngs();
-  await generateIco().catch(() => {
-    console.warn("[icons] Skipping ICO (install `to-ico` if you need it)");
-  });
+  await generateMacIcns();
 })();
