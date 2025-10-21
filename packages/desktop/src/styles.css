@@ -5,6 +5,8 @@
 @reference "tailwindcss";
 
 /* ---------- Theme tokens ---------- */
+/* We treat :root as the DARK palette.
+   Light mode overrides when <html> DOES NOT have .dark */
 :root {
   --bg: #0f1720;         /* slightly richer dark */
   --card: #101922;
@@ -21,6 +23,7 @@
 }
 
 html, body, #root { height: 100%; }
+html { transition: background-color .25s ease, color .25s ease; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -76,7 +79,7 @@ label { line-height: 1; }
 }
 .nav-btn--active {
   background: color-mix(in oklab, var(--primary) 22%, transparent);
-  color: white;
+  color: #3B82F6;
   transform: translateX(0px) scale(1.01);
 }
 .nav-btn--idle { @apply text-[color:var(--muted)] hover:bg-white/5; }
@@ -146,3 +149,95 @@ label { line-height: 1; }
   to   { opacity: 1; transform: translateY(0); }
 }
 .fade-up { animation: fadeUp .28s ease both; }
+
+/* ---------- Sun/Moon theme toggle ---------- */
+.theme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  /* prevent accidental text selection on rapid toggles */
+  user-select: none;
+}
+
+.theme-toggle input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-toggle .toggle-track {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--card) 75%, #000 25%);
+  border: 1px solid color-mix(in oklab, #ffffff 0%, #3b4754 35%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  transition: background-color .25s ease, border-color .25s ease;
+}
+
+.theme-toggle .icon {
+  font-size: 16px;
+  line-height: 1;
+  transition: opacity .2s ease, transform .2s ease, color .2s ease;
+  color: var(--muted);
+  opacity: .75;
+}
+
+.theme-toggle .icon.sun { order: 0; }
+.theme-toggle .icon.moon { order: 2; }
+
+.theme-toggle .thumb {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  transition: transform .25s cubic-bezier(.22,.65,.32,1), background-color .25s ease;
+}
+
+/* Light mode (unchecked) emphasis: sun brighter */
+.theme-toggle input:not(:checked) + .toggle-track .icon.sun {
+  opacity: 1;
+  transform: scale(1.05);
+  color: #f59e0b; /* warm sun */
+}
+.theme-toggle input:not(:checked) + .toggle-track .icon.moon {
+  opacity: .5;
+}
+
+/* Dark mode (checked) emphasis: moon brighter */
+.theme-toggle input:checked + .toggle-track {
+  background: color-mix(in oklab, var(--primary) 18%, var(--card));
+  border-color: color-mix(in oklab, var(--primary) 40%, #3b4754);
+}
+.theme-toggle input:checked + .toggle-track .thumb {
+  z-index: 1;
+  transform: translateX(24px);
+  background: #e5f0ff;
+}
+.theme-toggle input:checked + .toggle-track .icon.moon {
+  opacity: 1;
+  transform: scale(1.05);
+  color: #60a5fa; /* cool moon */
+}
+.theme-toggle input:checked + .toggle-track .icon.sun {
+  opacity: .5;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle .thumb,
+  .theme-toggle .icon,
+  .theme-toggle .toggle-track {
+    transition: none !important;
+  }
+}

@@ -64,9 +64,49 @@ type CsvPreview = {
   error?: string;
 };
 
+/* ----------------- Theme helpers ----------------- */
+type Theme = "dark" | "light";
+function getSystemTheme(): Theme {
+  if (typeof window === "undefined") return "dark";
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+function applyTheme(t: Theme) {
+  const root = document.documentElement;
+  if (t === "dark") root.classList.add("dark");
+  else root.classList.remove("dark");
+}
+
 export default function App() {
   const [step, _setStep] = useState<StepKey>("files");
   const [direction, setDirection] = useState<1 | -1>(1); // 1: forward, -1: back
+
+  // Theme state (persisted)
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = (localStorage.getItem("theme") as Theme | null) || null;
+    return saved ?? getSystemTheme();
+  });
+  useEffect(() => {
+    applyTheme(theme);
+    try {
+      localStorage.setItem("theme", theme);
+    } catch {}
+  }, [theme]);
+  // Keep in sync with OS changes if user hasn’t explicitly set after load
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq?.addEventListener) return;
+    const handler = () => {
+      const saved = localStorage.getItem("theme");
+      if (!saved) {
+        const sys = mq.matches ? "dark" : "light";
+        setTheme(sys as Theme);
+      }
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   // Animated nav indicator measurements
   const navRefs = useRef<Record<StepKey, HTMLButtonElement | null>>({
@@ -78,7 +118,10 @@ export default function App() {
   const [navIndicator, setNavIndicator] = useState<{
     top: number;
     height: number;
-  }>({ top: 0, height: 0 });
+  }>({
+    top: 0,
+    height: 0,
+  });
 
   const setStep = useCallback((next: StepKey) => {
     _setStep(next);
@@ -172,7 +215,6 @@ export default function App() {
         setDoneCode(e.code);
 
         // 🔴 If we "succeeded" but nothing was written, treat it as an error.
-        // This avoids false "success" when the core exits 0 with 0 notes.
         setHasError((prev) => {
           if (prev) return prev;
           const noOutputs = !outputs || outputs.length === 0;
@@ -380,6 +422,8 @@ export default function App() {
   }
 
   const stepAnimClass = direction === 1 ? "slide-in-right" : "slide-in-left";
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+  const themeIsDark = theme === "dark";
 
   return (
     <div className="h-full flex">
@@ -388,12 +432,36 @@ export default function App() {
         <div>
           <div className="flex items-center gap-3 mb-8">
             <img src={ankiLogo} alt="" className="w-9 h-9 rounded-lg" />
-            <div>
+            <div className="flex-1">
               <div className="text-base font-semibold leading-tight">
                 CSV to Anki
               </div>
               <div className="text-sm text-[var(--muted)]">Converter</div>
             </div>
+
+            {/* Theme toggle (sun/moon inside the switch) */}
+            <label
+              className="theme-toggle shrink-0"
+              title={
+                themeIsDark ? "Switch to Light mode" : "Switch to Dark mode"
+              }
+            >
+              <input
+                type="checkbox"
+                aria-label="Toggle dark mode"
+                checked={themeIsDark}
+                onChange={toggleTheme}
+              />
+              <span className="toggle-track">
+                <span className="material-symbols-outlined icon sun">
+                  light_mode
+                </span>
+                <span className="material-symbols-outlined icon moon">
+                  dark_mode
+                </span>
+                <span className="thumb" />
+              </span>
+            </label>
           </div>
 
           <div className="relative">
@@ -437,19 +505,19 @@ export default function App() {
           </div>
         </div>
 
-        {/* Sidebar footer with the two buttons */}
+        {/* Sidebar footer with the three buttons */}
         <div className="mt-auto pt-8 space-y-3">
           <button
             type="button"
             onClick={handleOpenMedia}
             title={
-              openMediaDisabled
+              !isElectron || !out
                 ? "Pick an output path in the Electron app first"
                 : "Open media folder"
             }
-            disabled={openMediaDisabled}
+            disabled={!isElectron || !out}
             className={`btn btn-muted h-10 w-full justify-start gap-2 ${
-              openMediaDisabled ? "opacity-50 cursor-not-allowed" : ""
+              !isElectron || !out ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
             <span className="material-symbols-outlined">folder_open</span>
@@ -466,9 +534,9 @@ export default function App() {
             <span className="truncate">Docs / GitHub</span>
           </button>
 
-          <div className="text-xs text-[var(--muted)] pt-2">
+          {/* <div className="text-xs text-[var(--muted)] pt-2">
             {isElectron ? "Electron mode" : "Preview mode (browser)"}
-          </div>
+          </div> */}
         </div>
       </aside>
 
@@ -795,19 +863,8 @@ function CsvStep({
               value={csvDelimiter ?? "auto"}
               onChange={(v) => {
                 onChange({ csvDelimiter: v });
-                // Re-read preview whenever delimiter changes
-                // (guard with setTimeout to ensure state is flushed)
                 setTimeout(() => {
                   if (csvPath) {
-                    (async () => {
-                      try {
-                        await (async () => {})(); // noop microtask
-                        // trigger reload
-                      } finally {
-                        // call refresh after change
-                      }
-                    })();
-                    // Direct call:
                     // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     refreshPreview();
                   }
@@ -1095,9 +1152,6 @@ function VoiceImageStep({
           Back
         </button>
         <div className="flex gap-3">
-          {/* <button type="button" className="btn btn-muted" onClick={onNext}>
-            Next
-          </button> */}
           <button
             type="button"
             className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1171,7 +1225,7 @@ function ProgressStep({
               <div className="text-base font-medium">Processing…</div>
               <div className="text-sm">{Math.round(ratio * 100)}%</div>
             </div>
-            <div className="h-2.5 bg-white/10 rounded-lg overflow-hidden">
+            <div className="h-2.5 bg-[#BFBFBF] rounded-lg overflow-hidden">
               <div
                 className="h-full"
                 style={{
