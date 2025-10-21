@@ -1,22 +1,103 @@
 {
-  "name": "anki-one-monorepo",
+  "name": "anki-one",
+  "version": "0.1.0",
+  "description": "CSV → Anki deck generator with TTS and images (desktop).",
+  "main": "electron/dist/main.js",
+  "author": "AKhalil609",
   "private": true,
   "packageManager": "pnpm@8.6.0",
-  "workspaces": [
-    "packages/*"
-  ],
+  "type": "commonjs",
   "scripts": {
-    "dev": "pnpm --filter anki-one-desktop dev",
-    "build": "pnpm -r build",
-    "start": "pnpm --filter anki-one-desktop start",
-    "lint": "eslint .",
-    "type-check": "tsc -b packages/core packages/desktop"
+    "dev": "concurrently -k -n VITE,CORE,ELEC,NODE -c auto \"vite --port 5175\" \"tsc -p core/tsconfig.json -w\" \"tsc -p electron/tsconfig.json -w\" \"wait-on tcp:5175 && wait-on ./core/dist/index.js && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec 'electron electron/dist/main.js --enable-logging=stderr'\"",
+    "dev:elec": "wait-on tcp:5175 && wait-on ./core/dist/index.js && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec \"electron electron/dist/main.js --enable-logging=stderr\"",
+    "build": "rimraf dist && vite build && tsc -p core/tsconfig.json && tsc -p electron/tsconfig.json",
+    "start": "electron electron/dist/main.js --prod",
+    "dist:mac": "pnpm build && electron-builder --mac zip",
+    "dist:win": "pnpm build && electron-builder --win nsis",
+    "dist:linux": "pnpm build && electron-builder --linux AppImage",
+    "type-check": "tsc -b",
+    "lint": "eslint ."
   },
   "dependencies": {
+    "anki-apkg-export": "4.0.3",
+    "csv-parse": "^5.5.6",
     "daisyui": "^5.1.13",
     "dotenv": "^17.2.2",
     "edge-tts": "^1.0.1",
     "edge-tts-universal": "^1.3.1",
-    "tailwindcss": "^4.1.13"
+    "file-type": "^21.0.0",
+    "g-i-s": "^2.1.7",
+    "p-limit": "^6.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "1.9.0",
+    "tailwindcss": "^4.1.13",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.15",
+    "@types/node": "^22.7.4",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.3",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.0",
+    "electron-builder": "^26.0.12",
+    "nodemon": "^3.1.10",
+    "postcss": "^8.5.6",
+    "rimraf": "^6.0.1",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vite-tsconfig-paths": "^5.1.4",
+    "wait-on": "^9.0.0"
+  },
+  "build": {
+    "appId": "com.ankione.app",
+    "productName": "Anki One",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.wasm"
+    ],
+    "mac": {
+      "target": [
+        "zip"
+      ],
+      "category": "public.app-category.education",
+      "hardenedRuntime": true,
+      "identity": null,
+      "icon": "src/build/logo.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "src/build/logo.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Education",
+      "icon": "src/build"
+    },
+    "files": [
+      "dist/**",
+      "electron/dist/**",
+      "core/dist/**",
+      "core/package.json",
+      "node_modules/**",
+      "package.json",
+      "!**/*.map",
+      "!**/*.ts"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "AKhalil609",
+        "repo": "Anki-gen-UI"
+      }
+    ]
   }
 }

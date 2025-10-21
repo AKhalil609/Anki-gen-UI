@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",             // ← was "src"
+    "lib": ["ES2022"],          // DOM not needed in Node; safe to drop
+    "types": ["node"],
+    "declaration": true,
+    "declarationMap": true
+  },
+  "include": ["**/*.ts", "types/**/*.d.ts"]
+}

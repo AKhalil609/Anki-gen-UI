@@ -1,5 +1,3 @@
-// /Users/ahmedhegab/Projects/anki-ui/anki-one/packages/core/src/pipeline.ts
-
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";

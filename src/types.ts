@@ -14,6 +14,16 @@ export type ProgressEvent =
   | { type: "pack:done"; outputs: string[]; durationMs: number }
   | { type: "done"; code: number };
 
+export type Voice = {
+  id: string;
+  label?: string;
+  name?: string;
+  locale?: string;
+  gender?: "Male" | "Female" | "Neutral";
+  note?: string;
+  sampleText?: string;
+};
+
 declare global {
   interface Window {
     anki: {

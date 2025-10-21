@@ -1,3 +1,4 @@
+// electron/main.ts
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -6,7 +7,8 @@ import { Worker } from "node:worker_threads";
 let win: BrowserWindow | null = null;
 let currentWorker: Worker | null = null;
 
-/** Safely send an event to the renderer */
+/* ---------- helpers ---------- */
+
 function send(evt: any) {
   try {
     if (win && !win.isDestroyed()) {
@@ -17,7 +19,6 @@ function send(evt: any) {
   }
 }
 
-/** Terminate any in-flight worker (used for cancel or before re-run) */
 async function terminateCurrentWorker(reason: "cancel" | "replace") {
   if (!currentWorker) return;
   try {
@@ -38,47 +39,9 @@ async function terminateCurrentWorker(reason: "cancel" | "replace") {
   }
 }
 
-/** Minimal, safe header-only CSV parsing (first line), with quotes + BOM support */
-function readCsvHeader(csvPath: string): string[] {
-  const MAX_BYTES = 256 * 1024; // plenty for a single long header line
-  const fd = fs.openSync(csvPath, "r");
-  try {
-    const buf = Buffer.allocUnsafe(MAX_BYTES);
-    const bytesRead = fs.readSync(fd, buf, 0, MAX_BYTES, 0);
-    let chunk = buf.slice(0, bytesRead).toString("utf8");
-    // Normalize newlines and strip BOM if present
-    if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
-    chunk = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    const firstLine = chunk.split("\n")[0] ?? "";
-    const delimiter = detectDelimiter(firstLine);
-
-    return parseCsvLine(firstLine, delimiter);
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
-/** Preflight: verify CSV has the requested column headers */
-function csvHasColumns(
-  csvPath: string,
-  required: string[]
-): { ok: boolean; missing: string[]; header?: string[] } {
-  try {
-    const header = readCsvHeader(csvPath).map((h) => String(h).trim());
-    const missing = required.filter((r) => !header.includes(r));
-    return { ok: missing.length === 0, missing, header };
-  } catch (err: any) {
-    return {
-      ok: false,
-      missing: [`Failed to read CSV: ${err?.message || err}`],
-    };
-  }
-}
-
-/* ---------- CSV preview (header + first N rows) ---------- */
+/* ---------- CSV preview utilities (header + first N rows) ---------- */
 
 function detectDelimiter(firstLine: string): string {
-  // Basic heuristic: prefer the most frequent among , ; \t | (pipes common too)
   const candidates = [",", ";", "\t", "|"];
   let best = ",";
   let bestCount = -1;
@@ -122,7 +85,6 @@ function parseCsvChunkToRows(
   delimiter: string,
   maxRows: number
 ): string[][] {
-  // Normalize newlines and strip BOM if present
   if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
   chunk = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
@@ -162,7 +124,6 @@ function parseCsvChunkToRows(
     cell += ch;
   }
 
-  // Push last row if chunk didn’t end with newline
   if (cell.length || row.length) {
     row.push(cell);
     rows.push(row.map((c) => c.trim()));
@@ -171,22 +132,38 @@ function parseCsvChunkToRows(
   return rows;
 }
 
+function readCsvHeader(csvPath: string): string[] {
+  const MAX_BYTES = 256 * 1024;
+  const fd = fs.openSync(csvPath, "r");
+  try {
+    const buf = Buffer.allocUnsafe(MAX_BYTES);
+    const bytesRead = fs.readSync(fd, buf, 0, MAX_BYTES, 0);
+    let chunk = buf.slice(0, bytesRead).toString("utf8");
+    if (chunk.charCodeAt(0) === 0xfeff) chunk = chunk.slice(1);
+    chunk = chunk.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const firstLine = chunk.split("\n")[0] ?? "";
+    const delimiter = detectDelimiter(firstLine);
+    return parseCsvLine(firstLine, delimiter);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function readCsvPreview(
   csvPath: string,
   maxRows: number,
   maxBytes: number,
-  delimiterOverride?: string // <— NEW
+  delimiterOverride?: string
 ) {
   const fd = fs.openSync(csvPath, "r");
   try {
     const stat = fs.fstatSync(fd);
-    const toRead = Math.min(stat.size, Math.max(32 * 1024, maxBytes)); // at least 32 KB
+    const toRead = Math.min(stat.size, Math.max(32 * 1024, maxBytes));
     const buf = Buffer.allocUnsafe(toRead);
     const bytesRead = fs.readSync(fd, buf, 0, toRead, 0);
     let chunk = buf.slice(0, bytesRead).toString("utf8");
 
     const firstLine = chunk.split(/\r\n|\r|\n/)[0] ?? "";
-    // use override if provided, else detect
     const delimiter =
       delimiterOverride && delimiterOverride.length
         ? delimiterOverride
@@ -224,18 +201,27 @@ function readCsvPreview(
   }
 }
 
-/* ---------------- Electron app window ---------------- */
+/* ---------------- Electron window ---------------- */
 
 function createWindow() {
   if (!app.isPackaged) {
+    // Helps some networking in dev sandboxes
     app.commandLine.appendSwitch("enable-features", "NetworkServiceInProcess");
   }
 
-  const isDev = !app.isPackaged;
+  const FORCE_PROD = process.argv.includes("--prod");
+  const isDev = !app.isPackaged && !FORCE_PROD;
   const forceDevtools = process.argv.includes("--devtools");
 
   const preloadPath = path.join(__dirname, "preload.js");
-  const prodIndexHtml = path.join(app.getAppPath(), "dist", "index.html");
+  const prodIndexHtml = path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "dist",
+    "index.html"
+  );
+  const devUrl = "http://localhost:5175";
 
   win = new BrowserWindow({
     width: 1200,
@@ -266,22 +252,24 @@ function createWindow() {
     win = null;
   });
 
-  if (!app.isPackaged) {
-    const url = "http://localhost:5175";
-    win
-      .loadURL(url)
-      .catch((err) => console.error("[main] loadURL error:", err));
+  if (isDev) {
+    // Try dev server first; if it isn't up, fall back to built file
+    win.loadURL(devUrl).catch((err) => {
+      console.error("[main] loadURL error (dev), falling back to file:", err);
+      return win
+        ?.loadFile(prodIndexHtml)
+        .catch((e) => console.error("[main] loadFile error:", e));
+    });
     win.webContents.openDevTools({ mode: "detach" });
   } else {
     if (!fs.existsSync(prodIndexHtml)) {
       const msg =
         `Production index.html not found.\n` +
         `Tried: ${prodIndexHtml}\n\n` +
-        `Ensure "dist/**" is included in electron-builder "files" and Vite build ran.`;
+        `Run "pnpm build" before starting with --prod or in packaged mode.`;
       console.error("[main] MISSING index.html:", prodIndexHtml);
       dialog.showErrorBox("Anki One – Missing index.html", msg);
     }
-
     win
       .loadFile(prodIndexHtml)
       .catch((err) => console.error("[main] loadFile error:", err));
@@ -289,7 +277,8 @@ function createWindow() {
   }
 }
 
-// Single instance lock
+/* ---------------- app lifecycle ---------------- */
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -314,7 +303,7 @@ if (!gotLock) {
   });
 }
 
-/* ------------- IPC handlers ------------- */
+/* ---------------- IPC handlers ---------------- */
 
 ipcMain.handle("choose-file", async () => {
   const res = await dialog.showOpenDialog({
@@ -369,7 +358,7 @@ ipcMain.handle(
         32 * 1024,
         Math.min(8 * 1024 * 1024, opts?.maxBytes ?? 2 * 1024 * 1024)
       );
-      const delimiterOverride = opts?.delimiter; // <— NEW
+      const delimiterOverride = opts?.delimiter;
       return readCsvPreview(filePath, maxRows, maxBytes, delimiterOverride);
     } catch (e: any) {
       return {
@@ -405,8 +394,6 @@ ipcMain.on("run-pipeline", async (evt, payload) => {
       return;
     }
 
-    // ✅ (optional) use the delimiter override for preflight too:
-    // reuse readCsvPreview to parse header with delimiterOverride
     const preview = readCsvPreview(input, 1, 64 * 1024, csvDelimiter);
     const header = (preview.ok ? preview.header : []).map((h) =>
       String(h).trim()
@@ -429,7 +416,7 @@ ipcMain.on("run-pipeline", async (evt, payload) => {
 
     const workerPath = path.join(__dirname, "worker.js");
     currentWorker = new Worker(workerPath, {
-      workerData: { ...payload, csvDelimiter }, // <— ensure it’s present
+      workerData: { ...payload, csvDelimiter },
     });
 
     const channel = evt.sender;

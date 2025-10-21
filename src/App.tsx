@@ -481,7 +481,9 @@ export default function App() {
                 return (
                   <button
                     key={s.id}
-                    ref={(el) => (navRefs.current[s.id as StepKey] = el)}
+                    ref={(el) => {
+                      navRefs.current[s.id as StepKey] = el;
+                    }}
                     onClick={() => {
                       if (disabled) return;
                       goTo(s.id as StepKey);

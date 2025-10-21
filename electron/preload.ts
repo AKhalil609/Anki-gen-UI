@@ -15,6 +15,6 @@ contextBridge.exposeInMainWorld("anki", {
   /** Get a small preview of the CSV: header + first few rows (safe, fast). */
   previewCsv: (
     filePath: string,
-    opts?: { maxRows?: number; maxBytes?: number }
+    opts?: { maxRows?: number; maxBytes?: number; delimiter?: string }
   ) => ipcRenderer.invoke("preview-csv", filePath, opts ?? {}),
 });
