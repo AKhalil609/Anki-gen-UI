@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "concurrently -k -n VITE,CORE,ELEC,NODE -c auto \"vite --port 5175\" \"tsc -p core/tsconfig.json -w\" \"tsc -p electron/tsconfig.json -w\" \"wait-on tcp:5175 && wait-on ./core/dist/index.js && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec 'electron electron/dist/main.js --enable-logging=stderr'\"",
     "dev:elec": "wait-on tcp:5175 && wait-on ./core/dist/index.js && nodemon -q -e js -w electron/dist --signal SIGINT --delay 300ms --exec \"electron electron/dist/main.js --enable-logging=stderr\"",
-    "build": "rimraf dist && vite build && tsc -p core/tsconfig.json && tsc -p electron/tsconfig.json",
+    "build": "rimraf renderer electron/dist && vite build && tsc -p core/tsconfig.json && tsc -p electron/tsconfig.json",
     "start": "electron electron/dist/main.js --prod",
     "dist:mac": "pnpm build && electron-builder --mac zip",
     "dist:win": "pnpm build && electron-builder --win nsis",
@@ -83,11 +83,10 @@
       "icon": "src/build"
     },
     "files": [
-      "dist/**",
+      "renderer/**",
       "electron/dist/**",
       "core/dist/**",
       "core/package.json",
-      "node_modules/**",
       "package.json",
       "!**/*.map",
       "!**/*.ts"

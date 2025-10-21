@@ -4,6 +4,10 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   base: "./",
+  build: {
+    outDir: "renderer",
+    emptyOutDir: true,
+  },
   plugins: [react(), tsconfigPaths()],
   optimizeDeps: {
     include: [

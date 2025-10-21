@@ -214,13 +214,10 @@ function createWindow() {
   const forceDevtools = process.argv.includes("--devtools");
 
   const preloadPath = path.join(__dirname, "preload.js");
-  const prodIndexHtml = path.resolve(
-    __dirname,
-    "..",
-    "..",
-    "dist",
-    "index.html"
-  );
+  const prodIndexHtml = app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "renderer", "index.html")
+    : path.resolve(__dirname, "..", "..", "renderer", "index.html");
+
   const devUrl = "http://localhost:5175";
 
   win = new BrowserWindow({
